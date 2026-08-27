@@ -359,6 +359,7 @@ body {
 /* ---------- Reels ---------- */
 
 .reel-frame {
+  position: relative;
   background: #0b0d10;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -366,6 +367,7 @@ body {
 }
 
 .reel-window {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 5px;
@@ -499,6 +501,67 @@ body {
   0%, 100% { transform: scale(1) rotate(0deg); }
   35% { transform: scale(1.4) rotate(-10deg); }
   65% { transform: scale(1.2) rotate(8deg); }
+}
+
+/* ---------- Win sequence (dim + connected path + label) ---------- */
+
+.cell.cell-dim img {
+  filter: grayscale(0.6) brightness(0.55);
+  transition: filter 0.25s ease;
+}
+
+.win-path-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.win-path-svg.show {
+  opacity: 1;
+}
+
+.win-path-line {
+  fill: none;
+  stroke: var(--win);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px var(--win-soft));
+}
+
+.win-path-dot {
+  fill: var(--win);
+  filter: drop-shadow(0 0 6px var(--win));
+}
+
+.win-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 6;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(11, 13, 16, 0.88);
+  border: 1px solid var(--win);
+  color: var(--win);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.win-label.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* ---------- Coin mode (Hold & Win bonus) ---------- */
