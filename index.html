@@ -8,90 +8,71 @@
 </head>
 <body>
 
-  <div class="table-glow"></div>
-
   <header class="top-bar">
-    <div class="brand">
-      <span class="brand-icon">🎰</span>
-      <span class="brand-name">Lucky<span class="brand-accent">Spin</span></span>
-    </div>
-    <div class="balance-box">
-      <span class="balance-label">Guthaben</span>
-      <span class="balance-value" id="balanceValue">1000</span>
-      <span class="balance-currency">Coins</span>
+    <div class="brand">Lucky<span>Spin</span></div>
+    <div class="balance-pill">
+      <span class="pill-label">Guthaben</span>
+      <span class="pill-value" id="balanceValue">1000</span>
     </div>
   </header>
 
   <main class="stage">
     <div class="machine">
-      <div class="machine-topper">
-        <h1 class="machine-title">777 <span>JACKPOT</span></h1>
-        <div class="jackpot-ticker">
-          Jackpot: <span id="jackpotValue">24,850</span> Coins
+
+      <div class="stat-row">
+        <div class="stat">
+          <span class="stat-label">Einsatz</span>
+          <div class="bet-stepper">
+            <button class="stepper-btn" id="betDown" aria-label="Einsatz verringern">−</button>
+            <span class="stat-value" id="betValue">40</span>
+            <button class="stepper-btn" id="betUp" aria-label="Einsatz erhöhen">+</button>
+          </div>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Letzter Gewinn</span>
+          <span class="stat-value" id="lastWinValue">0</span>
+        </div>
+        <div class="stat stat-bonus" id="freeSpinsStat" hidden>
+          <span class="stat-label">Freispiele</span>
+          <span class="stat-value" id="freeSpinsValue">0</span>
         </div>
       </div>
 
-      <div class="reel-frame">
-        <div class="reel-window" id="reelWindow">
-          <div class="reel" id="reel0">
-            <div class="symbol">🍒</div>
-            <div class="symbol">🍋</div>
-            <div class="symbol">🔔</div>
-          </div>
-          <div class="reel" id="reel1">
-            <div class="symbol">⭐</div>
-            <div class="symbol">🍇</div>
-            <div class="symbol">7️⃣</div>
-          </div>
-          <div class="reel" id="reel2">
-            <div class="symbol">💎</div>
-            <div class="symbol">🍀</div>
-            <div class="symbol">🍒</div>
-          </div>
-        </div>
-        <div class="payline"></div>
+      <div class="reel-frame" id="reelFrame">
+        <div class="reel-window" id="reelWindow"></div>
       </div>
 
       <div class="message-bar" id="messageBar">Viel Glück! Dreh das Rad.</div>
 
       <div class="controls">
-        <div class="bet-control">
-          <span class="control-label">Einsatz</span>
-          <div class="bet-stepper">
-            <button class="stepper-btn" id="betDown" aria-label="Einsatz verringern">−</button>
-            <span class="bet-value" id="betValue">10</span>
-            <button class="stepper-btn" id="betUp" aria-label="Einsatz erhöhen">+</button>
-          </div>
-        </div>
-
-        <button class="spin-btn" id="spinBtn">
-          <span class="spin-btn-label">SPIN</span>
+        <button class="spin-btn" id="spinBtn" disabled>
+          <span id="spinBtnLabel">Lädt…</span>
         </button>
-
         <button class="auto-btn" id="autoBtn">Auto x10</button>
       </div>
-    </div>
 
-    <section class="info-panel">
-      <h2>Gewinntabelle</h2>
-      <ul class="paytable">
-        <li><span class="pt-symbols">7️⃣ 7️⃣ 7️⃣</span><span class="pt-mult">×50</span></li>
-        <li><span class="pt-symbols">💎 💎 💎</span><span class="pt-mult">×25</span></li>
-        <li><span class="pt-symbols">🔔 🔔 🔔</span><span class="pt-mult">×15</span></li>
-        <li><span class="pt-symbols">🍀 🍀 🍀</span><span class="pt-mult">×12</span></li>
-        <li><span class="pt-symbols">⭐ ⭐ ⭐</span><span class="pt-mult">×10</span></li>
-        <li><span class="pt-symbols">🍇 🍇 🍇</span><span class="pt-mult">×8</span></li>
-        <li><span class="pt-symbols">🍋 🍋 🍋</span><span class="pt-mult">×5</span></li>
-        <li><span class="pt-symbols">🍒 🍒 🍒</span><span class="pt-mult">×4</span></li>
-        <li class="pt-note">2 gleiche Symbole zahlen ×1.5</li>
-      </ul>
-      <p class="disclaimer">Nur zu Unterhaltungszwecken · Kein echtes Geld · 18+</p>
-    </section>
+      <details class="paytable-toggle">
+        <summary>Gewinntabelle</summary>
+        <ul class="paytable" id="paytableList"></ul>
+        <p class="paytable-note">3+ gleiche Symbole von links zahlen pro Reihe. 3+ 🎰-Symbole irgendwo lösen Freispiele aus.</p>
+      </details>
+    </div>
   </main>
 
   <footer class="bottom-bar">
-    <span>© 2026 LuckySpin — Demo Startseite</span>
+    <span>Nur zu Unterhaltungszwecken · Kein echtes Geld · 18+</span>
+    <span class="attribution">Icons: Twemoji (CC BY 4.0)</span>
   </footer>
+
+  <canvas id="confettiCanvas"></canvas>
+
+  <div class="popup" id="popup">
+    <div class="popup-card">
+      <div class="popup-title" id="popupTitle">GEWINN!</div>
+      <div class="popup-amount" id="popupAmount">0</div>
+      <div class="popup-sub" id="popupSub"></div>
+    </div>
+  </div>
 
   <script src="js/script.js"></script>
 </body>
