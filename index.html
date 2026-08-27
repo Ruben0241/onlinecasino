@@ -43,8 +43,47 @@
         </div>
       </div>
 
-      <div class="reel-frame" id="reelFrame">
-        <div class="reel-window" id="reelWindow"></div>
+      <div class="reel-row">
+        <div class="reel-frame" id="reelFrame">
+          <div class="reel-window" id="reelWindow"></div>
+        </div>
+
+        <button class="lever" id="leverBtn" aria-label="Hebel ziehen zum Drehen" title="Hebel ziehen zum Drehen" disabled>
+          <svg class="lever-track" viewBox="0 0 64 130" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="leverTrackGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#4a4e57"/>
+                <stop offset="55%" stop-color="#202226"/>
+                <stop offset="100%" stop-color="#131417"/>
+              </linearGradient>
+              <linearGradient id="leverBoltGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#6b6f78"/>
+                <stop offset="100%" stop-color="#2a2c30"/>
+              </linearGradient>
+            </defs>
+            <rect x="12" y="6" width="40" height="118" rx="20" fill="url(#leverTrackGrad)" stroke="rgba(255,255,255,0.09)"/>
+            <rect x="24" y="14" width="16" height="102" rx="8" fill="rgba(0,0,0,0.35)"/>
+            <ellipse cx="32" cy="6" rx="20" ry="8" fill="url(#leverBoltGrad)"/>
+            <ellipse cx="32" cy="124" rx="20" ry="8" fill="url(#leverBoltGrad)"/>
+          </svg>
+          <svg class="lever-handle" id="leverRod" viewBox="0 0 64 130" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="leverRodGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#6b6f78"/>
+                <stop offset="45%" stop-color="#f2f1ee"/>
+                <stop offset="100%" stop-color="#8b8f98"/>
+              </linearGradient>
+              <radialGradient id="leverKnobGrad" cx="35%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#ff9c9c"/>
+                <stop offset="55%" stop-color="#d61f3c"/>
+                <stop offset="100%" stop-color="#7a0f21"/>
+              </radialGradient>
+            </defs>
+            <rect x="20" y="30" width="24" height="50" rx="12" fill="url(#leverRodGrad)"/>
+            <circle cx="32" cy="26" r="26" fill="url(#leverKnobGrad)"/>
+            <ellipse cx="24" cy="16" rx="9" ry="5.5" fill="rgba(255,255,255,0.45)"/>
+          </svg>
+        </button>
       </div>
 
       <div class="message-bar" id="messageBar">Viel Glück! Dreh das Rad.</div>
@@ -63,43 +102,6 @@
         <p class="paytable-note">3+ gleiche Symbole auf einer der vielen Gewinnlinien (waagerecht, senkrecht, diagonal, im Zickzack) zahlen — auch mehrere Linien gleichzeitig. 3+ 🎰-Symbole irgendwo lösen die Münzjagd aus: mind. 3 Spins, jede neue Münze setzt den Zähler zurück, bei vollem Gitter oder 0 Spins endet die Runde.</p>
       </details>
       </div>
-
-      <button class="lever" id="leverBtn" aria-label="Hebel ziehen zum Drehen" title="Hebel ziehen zum Drehen" disabled>
-        <svg class="lever-track" viewBox="0 0 64 130" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="leverTrackGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#4a4e57"/>
-              <stop offset="55%" stop-color="#202226"/>
-              <stop offset="100%" stop-color="#131417"/>
-            </linearGradient>
-            <linearGradient id="leverBoltGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#6b6f78"/>
-              <stop offset="100%" stop-color="#2a2c30"/>
-            </linearGradient>
-          </defs>
-          <rect x="12" y="6" width="40" height="118" rx="20" fill="url(#leverTrackGrad)" stroke="rgba(255,255,255,0.09)"/>
-          <rect x="24" y="14" width="16" height="102" rx="8" fill="rgba(0,0,0,0.35)"/>
-          <ellipse cx="32" cy="6" rx="20" ry="8" fill="url(#leverBoltGrad)"/>
-          <ellipse cx="32" cy="124" rx="20" ry="8" fill="url(#leverBoltGrad)"/>
-        </svg>
-        <svg class="lever-handle" id="leverRod" viewBox="0 0 64 130" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="leverRodGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#6b6f78"/>
-              <stop offset="45%" stop-color="#f2f1ee"/>
-              <stop offset="100%" stop-color="#8b8f98"/>
-            </linearGradient>
-            <radialGradient id="leverKnobGrad" cx="35%" cy="30%" r="70%">
-              <stop offset="0%" stop-color="#ff9c9c"/>
-              <stop offset="55%" stop-color="#d61f3c"/>
-              <stop offset="100%" stop-color="#7a0f21"/>
-            </radialGradient>
-          </defs>
-          <rect x="20" y="30" width="24" height="50" rx="12" fill="url(#leverRodGrad)"/>
-          <circle cx="32" cy="26" r="26" fill="url(#leverKnobGrad)"/>
-          <ellipse cx="24" cy="16" rx="9" ry="5.5" fill="rgba(255,255,255,0.45)"/>
-        </svg>
-      </button>
     </div>
   </main>
 
