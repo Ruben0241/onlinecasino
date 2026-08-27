@@ -93,6 +93,18 @@ body {
   color: var(--gold);
 }
 
+.mute-btn {
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.mute-btn.muted {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
 .pill-label {
   font-size: 0.7rem;
   color: var(--text-dim);
@@ -347,6 +359,7 @@ body {
 /* ---------- Reels ---------- */
 
 .reel-frame {
+  position: relative;
   background: #0b0d10;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -354,6 +367,7 @@ body {
 }
 
 .reel-window {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 5px;
@@ -396,6 +410,29 @@ body {
   to { box-shadow: inset 0 0 22px rgba(220, 170, 78, 0.35); border-color: var(--gold); }
 }
 
+/* C2 — anticipation: the reel is held in suspense (2+ scatters landed
+   already, or the top symbol/wild has run unbroken so far) */
+.reel-col.anticipation {
+  animation: anticipation-pulse 0.55s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes anticipation-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px rgba(220, 170, 78, 0.4), 0 0 10px rgba(220, 170, 78, 0.25); }
+  50% { box-shadow: inset 0 0 0 2px rgba(255, 215, 120, 0.95), 0 0 26px 6px rgba(220, 170, 78, 0.75); }
+}
+
+/* C3 — slam-stop: the spin button becomes a STOPP button while reels run */
+.spin-btn.slam-ready {
+  background: var(--win);
+  animation: slam-pulse 0.6s ease-in-out infinite;
+}
+
+@keyframes slam-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
 .cell {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -424,6 +461,15 @@ body {
 @keyframes kzu-glow {
   0%, 100% { filter: drop-shadow(0 0 5px rgba(220, 170, 78, 0.6)); transform: scale(1); }
   50% { filter: drop-shadow(0 0 14px rgba(220, 170, 78, 0.95)); transform: scale(1.05); }
+}
+
+.cell.cell-wild img {
+  animation: wild-glow 1.3s ease-in-out infinite;
+}
+
+@keyframes wild-glow {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(255, 224, 130, 0.55)); transform: scale(1) rotate(0deg); }
+  50% { filter: drop-shadow(0 0 16px rgba(255, 224, 130, 0.95)); transform: scale(1.08) rotate(-3deg); }
 }
 
 .cell.cell-win::after {
@@ -455,6 +501,67 @@ body {
   0%, 100% { transform: scale(1) rotate(0deg); }
   35% { transform: scale(1.4) rotate(-10deg); }
   65% { transform: scale(1.2) rotate(8deg); }
+}
+
+/* ---------- Win sequence (dim + connected path + label) ---------- */
+
+.cell.cell-dim img {
+  filter: grayscale(0.6) brightness(0.55);
+  transition: filter 0.25s ease;
+}
+
+.win-path-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.win-path-svg.show {
+  opacity: 1;
+}
+
+.win-path-line {
+  fill: none;
+  stroke: var(--win);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px var(--win-soft));
+}
+
+.win-path-dot {
+  fill: var(--win);
+  filter: drop-shadow(0 0 6px var(--win));
+}
+
+.win-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 6;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(11, 13, 16, 0.88);
+  border: 1px solid var(--win);
+  color: var(--win);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.win-label.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* ---------- Coin mode (Hold & Win bonus) ---------- */
@@ -757,12 +864,51 @@ body {
 .paytable li img {
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
 }
 
 .paytable li .pt-mult {
   margin-left: auto;
   color: var(--win);
   font-weight: 700;
+  text-align: right;
+}
+
+.pt-pays {
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 2px 8px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-pay-cell {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.pt-pay-cell b {
+  color: var(--win);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+/* ---------- Test-mode banner (F7) ---------- */
+
+.test-banner {
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #16130a;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f2c66b,
+    #f2c66b 10px,
+    #e0ac3e 10px,
+    #e0ac3e 20px
+  );
 }
 
 .paytable-note {
@@ -1008,6 +1154,25 @@ body {
   color: var(--text);
   padding: 4px 6px;
   font-size: 0.82rem;
+}
+
+.pay-fields {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pay-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pay-field .mult-input {
+  width: 68px;
+}
+
+.symbol-note {
+  font-style: italic;
 }
 
 .prob-pill {

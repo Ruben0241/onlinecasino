@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
+  <defs>
+    <radialGradient id="wildGrad" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#fff8e2"/>
+      <stop offset="45%" stop-color="#ffe9a8"/>
+      <stop offset="75%" stop-color="#e8b84b"/>
+      <stop offset="100%" stop-color="#8a6420"/>
+    </radialGradient>
+  </defs>
+  <rect x="2" y="1" width="32" height="34" rx="6" fill="#161616"/>
+  <rect x="2" y="1" width="32" height="34" rx="6" fill="none" stroke="#f2d488" stroke-width="1.4" opacity="0.85"/>
+  <path d="M18 3 L20.6 13.4 L31 18 L20.6 22.6 L18 33 L15.4 22.6 L5 18 L15.4 13.4 Z" fill="url(#wildGrad)"/>
+  <text x="18" y="21" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="6.6" letter-spacing="0.3" fill="#3c2707">WILD</text>
+</svg>

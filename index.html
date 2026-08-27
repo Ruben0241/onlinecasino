@@ -15,9 +15,12 @@
         <span class="pill-label">Guthaben</span>
         <span class="pill-value" id="balanceValue">1000</span>
       </div>
+      <button class="settings-link mute-btn" id="muteBtn" type="button" title="Ton ein/aus" aria-label="Ton ein/aus" aria-pressed="false">🔊</button>
       <a class="settings-link" href="settings.html" title="Testeinstellungen">⚙</a>
     </div>
   </header>
+
+  <div class="test-banner" id="testBanner" hidden>⚠ Testeinstellungen aktiv — nicht die Standard-Balance</div>
 
   <main class="stage">
     <div class="machine-wrap">
@@ -99,7 +102,7 @@
       <details class="paytable-toggle">
         <summary>Gewinntabelle</summary>
         <ul class="paytable" id="paytableList"></ul>
-        <p class="paytable-note">3+ gleiche Symbole auf einer der vielen Gewinnlinien (waagerecht, senkrecht, diagonal, im Zickzack) zahlen — auch mehrere Linien gleichzeitig. 3+ 🎰-Symbole irgendwo lösen die Münzjagd aus: mind. 3 Spins, jede neue Münze setzt den Zähler zurück, bei vollem Gitter oder 0 Spins endet die Runde.</p>
+        <p class="paytable-note">Ein Symbol zählt, sobald es lückenlos ab Walze 1 in irgendeiner Reihe steht — 4096 mögliche „Wege" statt fester Linien. Der Gewinn ist Anzahl Wege × Tabellenwert, mehrere Symbole zahlen gleichzeitig. Wild (Walze 2–5) ersetzt jedes Zahlsymbol. 3+ 🎰-Symbole irgendwo lösen die Münzjagd aus: mind. 3 Spins, jede neue Münze setzt den Zähler zurück, bei vollem Gitter oder 0 Spins endet die Runde.</p>
       </details>
       </div>
     </div>
@@ -120,7 +123,9 @@
     </div>
   </div>
 
+  <script src="js/engine.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/audio.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

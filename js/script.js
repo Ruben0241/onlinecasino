@@ -1,54 +1,69 @@
 (() => {
   "use strict";
 
-  const COLS = 6;
-  const ROWS = 4;
+  const Engine = window.LuckySpinEngine;
+  const CFG = window.LuckySpinConfig.loadConfig();
+  const Audio = window.LuckySpinAudio || null;
+
+  // Every Audio.* call below is guarded so a missing/broken audio module
+  // never breaks the game — spins and wins work identically without sound.
+  function safeAudio(fn) {
+    if (!Audio) return;
+    try {
+      fn(Audio);
+    } catch (e) {
+      /* audio must never break gameplay */
+    }
+  }
+
+  const COLS = CFG.cols;
+  const ROWS = CFG.rows;
   const STRIP_LEAD = 16; // random symbols scrolled through before the result lands
 
-  const CFG = window.LuckySpinConfig.loadConfig();
-
   const SYMBOLS = CFG.symbols;
-  const SCATTER = { ...CFG.scatter, scatter: true };
-  const POOL = [...SYMBOLS, SCATTER];
-  const TOTAL_WEIGHT = POOL.reduce((sum, s) => sum + s.weight, 0);
-
-  const RUN_MULT = { 3: 1, 4: 2.5, 5: 5, 6: 10 };
+  const WILD = Engine.enrichedWild(CFG);
+  const SCATTER = Engine.enrichedScatter(CFG);
+  const POOL = [...SYMBOLS, WILD, SCATTER];
+  const REEL_POOLS = Engine.buildReelPools(CFG);
 
   const MIN_BET = 20;
   const MAX_BET = 400;
   const BET_STEP = 20;
 
   const SCATTER_TRIGGER = CFG.scatterTrigger;
-  const BONUS_WIN_MULT = CFG.bonusWinMult;
+  const TOP_SYMBOL = SYMBOLS.find((s) => s.top) || null;
+  const ANTICIPATION_MS = 3000;
 
   const BIG_WIN_MULT = CFG.bigWinMult;
   const MEGA_WIN_MULT = CFG.megaWinMult;
 
+  // German display names for the win-sequence labels (report C4). Falls
+  // back to a title-cased key for anything not listed.
+  const SYMBOL_LABELS = {
+    ten: "10",
+    jack: "Bube",
+    queen: "Dame",
+    king: "König",
+    ace: "Ass",
+    cherry: "Kirsche",
+    lemon: "Zitrone",
+    grapes: "Trauben",
+    bell: "Glocke",
+    gem: "Edelstein",
+    seven: "Sieben",
+    kzu: "Krone",
+    wild: "Wild",
+    scatter: "Scatter",
+  };
+  function symbolLabel(key) {
+    return SYMBOL_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
   // ---------- coin mode (Hold & Win style bonus) ----------
 
   const COIN_MIN_SPINS = CFG.coinMinSpins;
-  const COIN_LAND_CHANCE = CFG.coinLandChancePct / 100;
-  const COIN_RARE_CHANCE = 0.07;
-  const COIN_RARE_MULTS = [2, 3, 5, 10];
-  const COIN_VALUE_TABLE = [
-    { mult: 1, weight: 40 },
-    { mult: 1.5, weight: 24 },
-    { mult: 2, weight: 16 },
-    { mult: 3, weight: 10 },
-    { mult: 5, weight: 6 },
-    { mult: 10, weight: 3 },
-    { mult: 25, weight: 1 },
-  ];
-  const COIN_VALUE_TOTAL_WEIGHT = COIN_VALUE_TABLE.reduce((sum, v) => sum + v.weight, 0);
-
-  function weightedCoinValueMult() {
-    let roll = Math.random() * COIN_VALUE_TOTAL_WEIGHT;
-    for (const v of COIN_VALUE_TABLE) {
-      if (roll < v.weight) return v.mult;
-      roll -= v.weight;
-    }
-    return COIN_VALUE_TABLE[0].mult;
-  }
 
   const state = {
     balance: 1000,
@@ -63,11 +78,32 @@
     coinFilled: 0,
     autoSpinsLeft: 0,
     fastMode: false,
+    canSlam: false,
   };
 
   // scales a millisecond duration down when fast mode is active
   function ms(v) {
     return state.fastMode ? Math.round(v * 0.35) : v;
+  }
+
+  function sleep(v) {
+    return new Promise((resolve) => setTimeout(resolve, v));
+  }
+
+  // ---------- slam-stop (C3) ----------
+  // While reels are visibly spinning, the spin button turns into a STOPP
+  // button: tapping it force-resolves every currently-running reel
+  // animation immediately (the result is already decided — this just gives
+  // the player a feeling of control over the machine).
+  let activeFinishers = [];
+  function registerFinisher(fn) {
+    activeFinishers.push(fn);
+    return () => {
+      activeFinishers = activeFinishers.filter((f) => f !== fn);
+    };
+  }
+  function slamActive() {
+    activeFinishers.slice().forEach((fn) => fn());
   }
 
   const el = {
@@ -94,21 +130,22 @@
     popupAmount: document.getElementById("popupAmount"),
     popupSub: document.getElementById("popupSub"),
     confettiCanvas: document.getElementById("confettiCanvas"),
+    testBanner: document.getElementById("testBanner"),
+    muteBtn: document.getElementById("muteBtn"),
   };
 
   // ---------- helpers ----------
 
-  function weightedRandomSymbol() {
-    let roll = Math.random() * TOTAL_WEIGHT;
-    for (const s of POOL) {
-      if (roll < s.weight) return s;
-      roll -= s.weight;
-    }
-    return POOL[0];
+  function randomSymbolForReel(c) {
+    return Engine.drawFromPool(REEL_POOLS[c], Math.random);
   }
 
   function formatNumber(n) {
     return Math.round(n).toLocaleString("de-DE");
+  }
+
+  function formatMult(n) {
+    return n.toLocaleString("de-DE", { minimumFractionDigits: n < 1 ? 3 : 0, maximumFractionDigits: 3 });
   }
 
   function flash(elm, big) {
@@ -140,6 +177,7 @@
         const p = Math.max(0, Math.min(1, (now - start) / duration));
         const eased = 1 - Math.pow(1 - p, 3);
         elm.textContent = formatNumber(from + (to - from) * eased);
+        safeAudio((A) => A.playCountTick(p));
         if (p < 1) {
           requestAnimationFrame(tick);
         } else {
@@ -184,6 +222,7 @@
     const cell = document.createElement("div");
     cell.className = "cell";
     if (symbol.scatter) cell.classList.add("cell-scatter");
+    if (symbol.wild) cell.classList.add("cell-wild");
     if (symbol.top) cell.classList.add("cell-top");
     const img = document.createElement("img");
     img.src = symbol.img;
@@ -215,28 +254,35 @@
 
   function buildPaytable() {
     el.paytableList.innerHTML = "";
-    [...SYMBOLS].reverse().forEach((s) => {
+
+    function payRow(symbol, labelText) {
       const li = document.createElement("li");
       const img = document.createElement("img");
-      img.src = s.img;
-      img.alt = s.key;
-      const mult = document.createElement("span");
-      mult.className = "pt-mult";
-      mult.textContent = `×${s.mult}`;
+      img.src = symbol.img;
+      img.alt = symbol.key;
       li.appendChild(img);
-      li.appendChild(mult);
+      if (labelText) {
+        const label = document.createElement("span");
+        label.className = "pt-mult";
+        label.textContent = labelText;
+        li.appendChild(label);
+      } else {
+        const pays = document.createElement("div");
+        pays.className = "pt-pays";
+        [3, 4, 5, 6].forEach((k) => {
+          const cell = document.createElement("span");
+          cell.className = "pt-pay-cell";
+          cell.innerHTML = `<b>${k}×</b>${formatMult(symbol.pay[k])}`;
+          pays.appendChild(cell);
+        });
+        li.appendChild(pays);
+      }
       el.paytableList.appendChild(li);
-    });
-    const li = document.createElement("li");
-    const img = document.createElement("img");
-    img.src = SCATTER.img;
-    img.alt = "scatter";
-    const label = document.createElement("span");
-    label.className = "pt-mult";
-    label.textContent = `${SCATTER_TRIGGER}+ = Münzjagd`;
-    li.appendChild(img);
-    li.appendChild(label);
-    el.paytableList.appendChild(li);
+    }
+
+    [...SYMBOLS].reverse().forEach((s) => payRow(s));
+    payRow(WILD, "Ersetzt jedes Zahlsymbol (Walze 2–5)");
+    payRow(SCATTER, `${SCATTER_TRIGGER}+ irgendwo = Münzjagd`);
   }
 
   // ---------- spin animation ----------
@@ -251,8 +297,9 @@
       strip.style.transform = "translateY(0)";
       strip.innerHTML = "";
 
+      const colIndex = [...el.reelWindow.children].indexOf(colEl);
       for (let i = 0; i < STRIP_LEAD; i++) {
-        strip.appendChild(makeCell(weightedRandomSymbol()));
+        strip.appendChild(makeCell(randomSymbolForReel(colIndex)));
       }
       finalSymbols.forEach((sym) => strip.appendChild(makeCell(sym)));
 
@@ -260,43 +307,270 @@
       // eslint-disable-next-line no-unused-expressions
       strip.offsetHeight;
 
+      const finalY = STRIP_LEAD * cellHeight;
       strip.style.filter = "blur(4px)";
       strip.style.transition = `transform ${duration}ms cubic-bezier(0.12, 0.85, 0.25, 1), filter ${duration}ms ease-out`;
-      strip.style.transform = `translateY(-${STRIP_LEAD * cellHeight}px)`;
+      strip.style.transform = `translateY(-${finalY}px)`;
       strip.style.filter = "blur(0px)";
 
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
+      // F2 fix: transitionend can be swallowed (tab switch, background app,
+      // device rotation, a second spin firing mid-animation) which used to
+      // leave this promise open forever and freeze every control. A timeout
+      // fallback guarantees it always resolves.
+      let settled = false;
+      let unregister = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (unregister) unregister();
+        clearTimeout(fallbackTimer);
         strip.removeEventListener("transitionend", onEnd);
         colEl.classList.remove("landing");
         // eslint-disable-next-line no-unused-expressions
         colEl.offsetWidth;
         colEl.classList.add("landing");
         setTimeout(() => colEl.classList.remove("landing"), ms(450));
+        safeAudio((A) => A.playReelStop(colIndex));
         resolve(strip);
       };
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        finish();
+      };
       strip.addEventListener("transitionend", onEnd);
+      const fallbackTimer = setTimeout(finish, duration + 300);
+
+      // C3 slam-stop: snaps the strip straight to its final position instead
+      // of waiting out the transition, then resolves like a normal landing.
+      unregister = registerFinisher(() => {
+        if (settled) return;
+        strip.style.transition = "none";
+        strip.style.transform = `translateY(-${finalY}px)`;
+        strip.style.filter = "blur(0px)";
+        finish();
+      });
     });
+  }
+
+  // C2 anticipation: figures out, from the (already-decided) result grid,
+  // which reels deserve the "this could be it" treatment — either because
+  // enough scatters have already landed on earlier reels to be one reel away
+  // from triggering the bonus, or because the top symbol (or wild) has run
+  // unbroken from reel 1 for at least two reels already.
+  function computeAnticipation(resultGrid) {
+    const anticipated = new Array(COLS).fill(false);
+    let scatterCount = 0;
+    let topRun = 0;
+    let topRunActive = true;
+
+    for (let c = 0; c < COLS; c++) {
+      const scatterSuspense = scatterCount >= SCATTER_TRIGGER - 1;
+      const topSuspense = topRunActive && topRun >= 2;
+      if (scatterSuspense || topSuspense) anticipated[c] = true;
+
+      let hasScatter = false;
+      let hasTopOrWild = false;
+      for (let r = 0; r < ROWS; r++) {
+        const s = resultGrid[c][r];
+        if (s.scatter) hasScatter = true;
+        if (s.wild || (TOP_SYMBOL && s.key === TOP_SYMBOL.key)) hasTopOrWild = true;
+      }
+      if (hasScatter) scatterCount++;
+      if (topRunActive) {
+        if (hasTopOrWild) topRun++;
+        else topRunActive = false;
+      }
+    }
+    return anticipated;
+  }
+
+  // multiple reels can be anticipated at once (e.g. reels 2-5 all held in
+  // suspense together) — this ref-counts so the anticipation tone starts
+  // once when the first of them begins and stops once when the last ends,
+  // instead of restarting/cutting out per reel.
+  let anticipationActive = 0;
+  function beginAnticipation() {
+    anticipationActive++;
+    if (anticipationActive === 1) safeAudio((A) => A.startAnticipation());
+  }
+  function endAnticipation() {
+    anticipationActive = Math.max(0, anticipationActive - 1);
+    if (anticipationActive === 0) safeAudio((A) => A.stopAnticipation());
   }
 
   async function playSpinAnimation(resultGrid) {
     el.reelFrame.classList.add("spinning");
     const cols = [...el.reelWindow.children];
-    const durations = [900, 1150, 1400, 1650, 1900, 2150].map(ms);
-    const promises = cols.map((colEl, c) => spinColumn(colEl, resultGrid[c], durations[c]));
+    const anticipated = computeAnticipation(resultGrid);
+    const baseDurations = [900, 1150, 1400, 1650, 1900, 2150];
+    const durations = baseDurations.map((d, c) => ms(anticipated[c] ? Math.max(d, ANTICIPATION_MS) : d));
+    safeAudio((A) => A.startSpinLoop(durations[durations.length - 1]));
+
+    // slam-stop is only offered during the visible reel spin
+    state.canSlam = true;
+    el.spinBtn.disabled = false;
+    el.spinBtn.classList.add("slam-ready");
+    el.spinBtnLabel.textContent = "STOPP";
+
+    const promises = cols.map((colEl, c) => {
+      if (anticipated[c]) {
+        colEl.classList.add("anticipation");
+        beginAnticipation();
+      }
+      return spinColumn(colEl, resultGrid[c], durations[c]).then((r) => {
+        if (anticipated[c]) {
+          colEl.classList.remove("anticipation");
+          endAnticipation();
+        }
+        return r;
+      });
+    });
     await Promise.all(promises);
+    safeAudio((A) => A.stopSpinLoop());
+
+    state.canSlam = false;
+    el.spinBtn.classList.remove("slam-ready");
+    el.spinBtnLabel.textContent = "SPIN";
+    el.spinBtn.disabled = true;
     el.reelFrame.classList.remove("spinning");
   }
 
-  function markWinCells(winningCells) {
-    const cols = [...el.reelWindow.children];
-    winningCells.forEach(([c, r], i) => {
-      const strip = cols[c].querySelector(".reel-strip");
-      const visible = [...strip.children].slice(-ROWS);
-      const cell = visible[r];
-      cell.style.animationDelay = `${(i % 6) * 0.08}s`;
-      cell.classList.add("cell-win");
+  // Looks up the rendered cell element for a landed grid position. After a
+  // spin lands, each reel-strip holds STRIP_LEAD scroll-through cells
+  // followed by the ROWS final cells, so the last ROWS children are the
+  // visible, landed symbols in row order.
+  function getCellEl(c, r) {
+    const colEl = el.reelWindow.children[c];
+    if (!colEl) return null;
+    const strip = colEl.querySelector(".reel-strip");
+    const visible = [...strip.children].slice(-ROWS);
+    return visible[r] || null;
+  }
+
+  // Groups one win's cells by reel (column), each entry holding every cell
+  // element that matched on that reel — used both to highlight every
+  // matching cell and to plot one path point per reel.
+  function groupWinCellsByColumn(win) {
+    const byCol = new Map();
+    win.cells.forEach(([c, r]) => {
+      const cellEl = getCellEl(c, r);
+      if (!cellEl) return;
+      if (!byCol.has(c)) byCol.set(c, []);
+      byCol.get(c).push(cellEl);
     });
+    return [...byCol.keys()]
+      .sort((a, b) => a - b)
+      .map((c) => byCol.get(c));
+  }
+
+  // Draws a connected line through the (centroid of each) reel's matching
+  // cells, so a win reads as one path running left-to-right instead of a
+  // scatter of unrelated glowing cells.
+  function drawWinPath(svg, cellGroups) {
+    svg.innerHTML = "";
+    const frameRect = el.reelWindow.getBoundingClientRect();
+    svg.setAttribute("viewBox", `0 0 ${frameRect.width} ${frameRect.height}`);
+
+    const centers = cellGroups.map((cells) => {
+      let sx = 0;
+      let sy = 0;
+      cells.forEach((cellEl) => {
+        const r = cellEl.getBoundingClientRect();
+        sx += r.left + r.width / 2 - frameRect.left;
+        sy += r.top + r.height / 2 - frameRect.top;
+      });
+      return [sx / cells.length, sy / cells.length];
+    });
+
+    if (centers.length >= 2) {
+      const poly = document.createElementNS(SVG_NS, "polyline");
+      poly.setAttribute("points", centers.map(([x, y]) => `${x},${y}`).join(" "));
+      poly.setAttribute("class", "win-path-line");
+      svg.appendChild(poly);
+    }
+
+    centers.forEach(([x, y]) => {
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("cx", x);
+      dot.setAttribute("cy", y);
+      dot.setAttribute("r", 7);
+      dot.setAttribute("class", "win-path-dot");
+      svg.appendChild(dot);
+    });
+  }
+
+  // Shows one win's turn in the sequence: highlights every matching cell,
+  // draws its connecting path, pops up its "4x Glocke — 320" label, holds
+  // for `duration`, then clears back to the dimmed state for the next win.
+  async function playSingleWin(win, svg, label, duration) {
+    const cellGroups = groupWinCellsByColumn(win);
+    const allCells = cellGroups.flat();
+
+    allCells.forEach((cellEl, i) => {
+      cellEl.style.animationDelay = `${(i % 6) * 0.05}s`;
+      cellEl.classList.add("cell-win");
+    });
+
+    drawWinPath(svg, cellGroups);
+    label.textContent = `${win.count}× ${symbolLabel(win.symbolKey)} — ${formatNumber(win.amount)}`;
+
+    // force reflow so re-adding "show" retriggers the transition even if
+    // the previous win's turn just removed it
+    // eslint-disable-next-line no-unused-expressions
+    svg.offsetWidth;
+    svg.classList.add("show");
+    label.classList.add("show");
+
+    await sleep(duration);
+
+    svg.classList.remove("show");
+    label.classList.remove("show");
+    allCells.forEach((cellEl) => cellEl.classList.remove("cell-win"));
+
+    await sleep(ms(120));
+  }
+
+  // Full win-presentation sequence (report C4): dims every symbol not part
+  // of any win, then plays each win in `wins` one at a time as a connected,
+  // labeled path so it's visible *why* it won, instead of every winning
+  // cell lighting up simultaneously. Resolves once the sequence is done and
+  // the board is back to normal, ready for the balance/lastWin count-up.
+  async function playWinSequence(wins) {
+    if (!wins || wins.length === 0) return;
+
+    const winCellKeys = new Set();
+    wins.forEach((w) => w.cells.forEach(([c, r]) => winCellKeys.add(`${c},${r}`)));
+
+    const dimmedCells = [];
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        if (winCellKeys.has(`${c},${r}`)) continue;
+        const cellEl = getCellEl(c, r);
+        if (!cellEl) continue;
+        cellEl.classList.add("cell-dim");
+        dimmedCells.push(cellEl);
+      }
+    }
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "win-path-svg");
+    el.reelWindow.appendChild(svg);
+
+    const label = document.createElement("div");
+    label.className = "win-label";
+    el.reelFrame.appendChild(label);
+
+    // biggest win last, so the sequence builds toward the best moment
+    const orderedWins = [...wins].sort((a, b) => a.amount - b.amount);
+    const stepDuration = ms(600);
+    for (let i = 0; i < orderedWins.length; i++) {
+      safeAudio((A) => A.playWinArpeggio(i));
+      await playSingleWin(orderedWins[i], svg, label, stepDuration);
+    }
+
+    dimmedCells.forEach((cellEl) => cellEl.classList.remove("cell-dim"));
+    svg.remove();
+    label.remove();
   }
 
   function shakeMachine(mega) {
@@ -306,104 +580,6 @@
     document.querySelector(".machine").offsetWidth;
     document.querySelector(".machine").classList.add(cls);
     setTimeout(() => document.querySelector(".machine").classList.remove(cls), ms(mega ? 1500 : 550));
-  }
-
-  // ---------- paylines (horizontal, vertical, diagonal, zigzag) ----------
-
-  function buildPaylines() {
-    const lines = [];
-
-    // horizontal — one per row
-    for (let r = 0; r < ROWS; r++) {
-      const cells = [];
-      for (let c = 0; c < COLS; c++) cells.push([c, r]);
-      lines.push(cells);
-    }
-
-    // vertical — one per column
-    for (let c = 0; c < COLS; c++) {
-      const cells = [];
-      for (let r = 0; r < ROWS; r++) cells.push([c, r]);
-      lines.push(cells);
-    }
-
-    // diagonals (down-right and down-left), length = ROWS
-    for (let startCol = 0; startCol <= COLS - ROWS; startCol++) {
-      const down = [];
-      const up = [];
-      for (let r = 0; r < ROWS; r++) {
-        down.push([startCol + r, r]);
-        up.push([startCol + r, ROWS - 1 - r]);
-      }
-      lines.push(down);
-      lines.push(up);
-    }
-
-    // zigzag paylines across all reels (classic V / W patterns)
-    const zigzagPatterns = [
-      [0, 1, 2, 3, 2, 1],
-      [3, 2, 1, 0, 1, 2],
-      [1, 0, 1, 0, 1, 0],
-      [2, 3, 2, 3, 2, 3],
-      [0, 0, 1, 2, 3, 3],
-      [3, 3, 2, 1, 0, 0],
-    ];
-    zigzagPatterns.forEach((pattern) => {
-      lines.push(pattern.map((r, c) => [c, r]));
-    });
-
-    return lines;
-  }
-
-  const PAYLINES = buildPaylines();
-
-  // ---------- win evaluation ----------
-
-  function evaluateGrid(resultGrid) {
-    let totalWin = 0;
-    let winLineCount = 0;
-    const winCellMap = new Map();
-    const lineBet = state.bet / PAYLINES.length;
-
-    PAYLINES.forEach((cells) => {
-      // scan the whole line for runs of 3+ matching symbols, not just from the left edge
-      let i = 0;
-      while (i < cells.length) {
-        const [ci, ri] = cells[i];
-        const sym = resultGrid[ci][ri];
-        if (sym.scatter) {
-          i++;
-          continue;
-        }
-        let j = i + 1;
-        while (j < cells.length) {
-          const [cj, rj] = cells[j];
-          const symJ = resultGrid[cj][rj];
-          if (symJ.scatter || symJ.key !== sym.key) break;
-          j++;
-        }
-        const run = j - i;
-        if (run >= 3) {
-          const win = lineBet * sym.mult * RUN_MULT[run];
-          totalWin += win;
-          winLineCount++;
-          for (let k = i; k < j; k++) {
-            const [ck, rk] = cells[k];
-            winCellMap.set(`${ck},${rk}`, [ck, rk]);
-          }
-        }
-        i = j;
-      }
-    });
-
-    let scatterCount = 0;
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) {
-        if (resultGrid[c][r].scatter) scatterCount++;
-      }
-    }
-
-    return { totalWin, winLineCount, winningCells: [...winCellMap.values()], scatterCount };
   }
 
   // ---------- coin mode grid ----------
@@ -492,34 +668,46 @@
       strip.style.transform = "translateY(0)";
       strip.style.filter = "blur(0px)";
 
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
+      // F2 fix: same timeout fallback as spinColumn — never leave a coin
+      // cell (and thus the whole bonus round) stuck on a swallowed event.
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimer);
         strip.removeEventListener("transitionend", onEnd);
         cellEl.innerHTML = "";
         if (finalCoin) applyCoinFace(cellEl, finalCoin);
         resolve();
       };
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        finish();
+      };
       strip.addEventListener("transitionend", onEnd);
+      const fallbackTimer = setTimeout(finish, duration + 300);
     });
   }
 
   function playCoinReveal(newlyLanded) {
     const cols = [...el.reelWindow.children];
-    const landedSet = new Set(newlyLanded.map(([c, r]) => `${c},${r}`));
+    const landedMap = new Map(newlyLanded.map(([c, r, coin]) => [`${c},${r}`, coin]));
     const jobs = [];
 
     for (let c = 0; c < COLS; c++) {
       for (let r = 0; r < ROWS; r++) {
         const key = `${c},${r}`;
-        if (state.coinGrid[c][r] && !landedSet.has(key)) continue; // already-locked coin, leave it
+        const wasLocked = state.coinGrid[c][r] && !landedMap.has(key);
+        if (wasLocked) continue; // already-locked coin, leave it
         const cell = cols[c].children[r];
-        const finalCoin = landedSet.has(key) ? state.coinGrid[c][r] : null;
+        const finalCoin = landedMap.get(key) || null;
         const duration = ms(520 + (c + r) * 20 + Math.random() * 100);
         jobs.push(
           spinCoinCell(cell, finalCoin, duration).then(() => {
             if (finalCoin) {
               cell.classList.add("just-landed");
               setTimeout(() => cell.classList.remove("just-landed"), ms(700));
+              safeAudio((A) => A.playCoinLand());
             }
           })
         );
@@ -529,26 +717,12 @@
     return Promise.all(jobs);
   }
 
-  async function coinModeSpin() {
-    state.spinning = true;
-    setControlsEnabled(false);
+  // Runs one coin-hunt respin. Returns true once the round has finished
+  // (grid full or spins exhausted) and the payout has been settled.
+  async function coinModeSpinStep() {
     setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
 
-    const newlyLanded = [];
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) {
-        if (state.coinGrid[c][r]) continue;
-        if (Math.random() < COIN_LAND_CHANCE) {
-          const mult = weightedCoinValueMult();
-          const rare = Math.random() < COIN_RARE_CHANCE
-            ? COIN_RARE_MULTS[Math.floor(Math.random() * COIN_RARE_MULTS.length)]
-            : null;
-          const value = state.bet * mult * (rare || 1) * BONUS_WIN_MULT;
-          state.coinGrid[c][r] = { mult, rare, value };
-          newlyLanded.push([c, r]);
-        }
-      }
-    }
+    const newlyLanded = Engine.coinStep(CFG, state.coinGrid, state.bet, Math.random);
 
     await playCoinReveal(newlyLanded);
     state.coinFilled += newlyLanded.length;
@@ -565,15 +739,15 @@
 
     if (gridFull || state.coinSpinsLeft <= 0) {
       await finishCoinMode(gridFull);
-      return;
+      return true;
     }
 
     setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
-    state.spinning = false;
-    setTimeout(spin, ms(850));
+    return false;
   }
 
   async function finishCoinMode(gridFull) {
+    safeAudio((A) => A.stopBonusLoop());
     let total = 0;
     for (let c = 0; c < COLS; c++) {
       for (let r = 0; r < ROWS; r++) {
@@ -589,13 +763,11 @@
     popAndCount(el.lastWin, 0, total, big);
     state.lastWin = total;
 
-    state.spinning = false;
-
     if (gridFull) {
       shakeMachine(true);
       await showPopup("GITTER VOLL!", total, "Alle Felder gefüllt — Jackpot!", 260, true);
     } else {
-      await showPopup("MÜNZJAGD BEENDET", total, "Gesamtgewinn der Münzjagd", 180, total >= state.bet * BIG_WIN_MULT);
+      await showPopup("MÜNZJAGD BEENDET", total, "Gesamtgewinn der Münzjagd", 180, big);
     }
 
     state.inBonus = false;
@@ -605,7 +777,15 @@
     el.machineWrap.classList.remove("bonus-active");
     buildInitialGrid();
     setMessage("Zurück im Hauptspiel. Viel Glück!", null);
-    setControlsEnabled(true);
+  }
+
+  // runs the coin-hunt bonus to completion, one paced respin at a time
+  async function runBonusRound() {
+    while (true) {
+      await sleep(ms(850));
+      const finished = await coinModeSpinStep();
+      if (finished) return;
+    }
   }
 
   // ---------- confetti ----------
@@ -613,21 +793,31 @@
   const ctx = el.confettiCanvas.getContext("2d");
   let confettiParticles = [];
   let confettiRAF = null;
+  let canvasW = 0;
+  let canvasH = 0;
   const CONFETTI_COLORS = ["#dcaa4e", "#4ade80", "#5eb1ff", "#ff6b81", "#f2f1ee"];
 
+  // F4 fix: canvas backing store must scale with devicePixelRatio, or the
+  // whole confetti layer renders soft/blurry on any high-density screen
+  // (i.e. basically every phone).
   function resizeCanvas() {
-    el.confettiCanvas.width = window.innerWidth;
-    el.confettiCanvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvasW = window.innerWidth;
+    canvasH = window.innerHeight;
+    el.confettiCanvas.width = Math.round(canvasW * dpr);
+    el.confettiCanvas.height = Math.round(canvasH * dpr);
+    el.confettiCanvas.style.width = `${canvasW}px`;
+    el.confettiCanvas.style.height = `${canvasH}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
 
   function burstConfetti(amount) {
-    const w = el.confettiCanvas.width;
     for (let i = 0; i < amount; i++) {
       confettiParticles.push({
         shape: "rect",
-        x: Math.random() * w,
+        x: Math.random() * canvasW,
         y: -20 - Math.random() * 200,
         vx: (Math.random() - 0.5) * 6,
         vy: 2 + Math.random() * 4,
@@ -642,11 +832,10 @@
   }
 
   function burstCoins(amount) {
-    const w = el.confettiCanvas.width;
     for (let i = 0; i < amount; i++) {
       confettiParticles.push({
         shape: "coin",
-        x: Math.random() * w,
+        x: Math.random() * canvasW,
         y: -30 - Math.random() * 400,
         vx: (Math.random() - 0.5) * 3,
         vy: 3 + Math.random() * 5,
@@ -660,8 +849,7 @@
   }
 
   function confettiLoop() {
-    ctx.clearRect(0, 0, el.confettiCanvas.width, el.confettiCanvas.height);
-    const h = el.confettiCanvas.height;
+    ctx.clearRect(0, 0, canvasW, canvasH);
     confettiParticles.forEach((p) => {
       p.vy += 0.05;
       p.x += p.vx;
@@ -690,7 +878,7 @@
       }
       ctx.restore();
     });
-    confettiParticles = confettiParticles.filter((p) => p.y < h + 40);
+    confettiParticles = confettiParticles.filter((p) => p.y < canvasH + 40);
     if (confettiParticles.length > 0) {
       confettiRAF = requestAnimationFrame(confettiLoop);
     } else {
@@ -722,13 +910,19 @@
     requestAnimationFrame(tick);
 
     return new Promise((resolve) => {
+      // F5 fix: the auto-dismiss timer used to keep running even after a
+      // manual click already closed the popup, calling dismiss() twice.
+      // Harmless today, but the second call fires the moment sound/extra
+      // animation hooks it (Welle 2), so clear it properly on close.
+      let dismissTimer;
       const dismiss = () => {
+        clearTimeout(dismissTimer);
         el.popup.classList.remove("show");
         el.popup.removeEventListener("click", dismiss);
         resolve();
       };
       el.popup.addEventListener("click", dismiss);
-      setTimeout(dismiss, ms(2600));
+      dismissTimer = setTimeout(dismiss, ms(2600));
     });
   }
 
@@ -744,6 +938,10 @@
   }
 
   function pullLever() {
+    safeAudio((A) => {
+      A.init();
+      A.playLeverClick();
+    });
     el.lever.classList.remove("pulled");
     el.leverRod.style.animationDuration = "";
     // eslint-disable-next-line no-unused-expressions
@@ -754,45 +952,25 @@
     setTimeout(() => el.lever.classList.remove("pulled"), duration);
   }
 
-  async function spin() {
-    if (state.spinning) return;
-
-    if (state.inCoinMode) {
-      await coinModeSpin();
-      return;
-    }
-
-    if (!state.inBonus && state.balance < state.bet) {
-      setMessage("Nicht genug Guthaben. Einsatz verringern.", null);
-      stopAutoSpin();
-      return;
-    }
-
-    state.spinning = true;
-    setControlsEnabled(false);
-    el.reelWindow.querySelectorAll(".cell-win").forEach((c) => c.classList.remove("cell-win"));
-
+  // Runs exactly one base-game spin (deduct bet, animate, evaluate, react).
+  // Returns true if it triggered the coin-hunt bonus.
+  async function doBaseSpin() {
     const prev = state.balance;
     state.balance -= state.bet;
     el.balance.textContent = formatNumber(state.balance);
     flash(el.balance);
     setMessage("Viel Glück!", null);
 
-    const resultGrid = [];
-    for (let c = 0; c < COLS; c++) {
-      const colSymbols = [];
-      for (let r = 0; r < ROWS; r++) colSymbols.push(weightedRandomSymbol());
-      resultGrid.push(colSymbols);
-    }
+    const resultGrid = Engine.spinGrid(CFG, Math.random);
 
     await playSpinAnimation(resultGrid);
     state.grid = resultGrid;
 
-    const { totalWin, winLineCount, winningCells, scatterCount } = evaluateGrid(resultGrid);
+    const { totalWin, wins, scatterCount } = Engine.evaluateWays(CFG, resultGrid, state.bet);
     const appliedWin = totalWin;
 
     if (appliedWin > 0) {
-      markWinCells(winningCells);
+      await playWinSequence(wins);
       const big = appliedWin >= state.bet * BIG_WIN_MULT;
       const balanceBefore = state.balance;
       state.balance += appliedWin;
@@ -814,9 +992,9 @@
       shakeMachine(false);
       await showPopup("GROSSER GEWINN!", appliedWin, "", 130);
     } else if (appliedWin > 0) {
-      if (winLineCount > 1) {
-        setMessage(`${winLineCount}x KOMBI-GEWINN! +${formatNumber(appliedWin)} Coins`, "win");
-        if (winLineCount >= 3) shakeMachine(false);
+      if (wins.length > 1) {
+        setMessage(`${wins.length}x KOMBI-GEWINN! +${formatNumber(appliedWin)} Coins`, "win");
+        if (wins.length >= 3) shakeMachine(false);
       } else {
         setMessage(`Gewinn: +${formatNumber(appliedWin)} Coins`, "win");
       }
@@ -834,23 +1012,59 @@
       el.freeSpinsValue.textContent = state.coinSpinsLeft;
       el.machineWrap.classList.add("bonus-active");
       renderCoinGrid();
+      safeAudio((A) => A.playBonusFanfare());
       await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
+      safeAudio((A) => A.startBonusLoop());
       setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
-      state.spinning = false;
-      setTimeout(spin, ms(850));
-      return;
+    }
+
+    return triggered;
+  }
+
+  // One full user-initiated spin: the base spin, plus the entire coin-hunt
+  // bonus round if it triggers. This is the unit auto-spin repeats — F1 fix:
+  // auto-spin used to die silently whenever a bonus fired, because the old
+  // spin() returned early out of the very block that scheduled the next
+  // auto-spin. Now that continuation lives outside the spin logic entirely.
+  async function runSpinCycle() {
+    state.spinning = true;
+    setControlsEnabled(false);
+    el.reelWindow.querySelectorAll(".cell-win, .cell-dim").forEach((c) => c.classList.remove("cell-win", "cell-dim"));
+    el.reelWindow.querySelectorAll(".win-path-svg").forEach((s) => s.remove());
+    el.reelFrame.querySelectorAll(".win-label").forEach((l) => l.remove());
+
+    const triggered = await doBaseSpin();
+    if (triggered) {
+      await runBonusRound();
     }
 
     state.spinning = false;
     setControlsEnabled(true);
+  }
 
-    if (state.autoSpinsLeft > 0) {
-      state.autoSpinsLeft -= 1;
-      if (state.autoSpinsLeft > 0 && state.balance >= state.bet) {
-        setTimeout(spin, ms(500));
-      } else {
+  async function spin() {
+    if (state.spinning) return;
+    if (!state.inBonus && state.balance < state.bet) {
+      setMessage("Nicht genug Guthaben. Einsatz verringern.", null);
+      stopAutoSpin();
+      return;
+    }
+    await runSpinCycle();
+  }
+
+  async function autoSpinLoop() {
+    while (state.autoSpinsLeft > 0) {
+      if (state.balance < state.bet) {
         stopAutoSpin();
+        return;
       }
+      await runSpinCycle();
+      state.autoSpinsLeft -= 1;
+      if (state.autoSpinsLeft <= 0) {
+        stopAutoSpin();
+        return;
+      }
+      await sleep(ms(500));
     }
   }
 
@@ -868,7 +1082,16 @@
     state.autoSpinsLeft = 10;
     el.autoBtn.classList.add("active");
     el.autoBtn.textContent = "Stop";
-    if (!state.spinning) spin();
+    if (!state.spinning) autoSpinLoop();
+  }
+
+  // ---------- test-mode banner (F7) ----------
+  // settings.html is open to anyone; make it obvious when the running
+  // config is not the shipped default so nobody mistakes a detuned build
+  // for the real balance.
+  function updateTestBanner() {
+    if (!el.testBanner) return;
+    el.testBanner.hidden = !window.LuckySpinConfig.isCustomized();
   }
 
   // ---------- wiring ----------
@@ -885,14 +1108,43 @@
     el.bet.textContent = state.bet;
   });
 
-  el.spinBtn.addEventListener("click", spin);
-  el.autoBtn.addEventListener("click", toggleAutoSpin);
+  el.spinBtn.addEventListener("click", () => {
+    safeAudio((A) => A.init());
+    if (state.canSlam) {
+      slamActive();
+      return;
+    }
+    spin();
+  });
+  el.autoBtn.addEventListener("click", () => {
+    safeAudio((A) => A.init());
+    toggleAutoSpin();
+  });
 
   el.lever.addEventListener("click", () => {
     if (el.lever.disabled) return;
     pullLever();
     spin();
   });
+
+  function updateMuteBtn() {
+    if (!el.muteBtn) return;
+    const muted = !!(Audio && Audio.isMuted());
+    el.muteBtn.textContent = muted ? "🔇" : "🔊";
+    el.muteBtn.classList.toggle("muted", muted);
+    el.muteBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+  }
+
+  if (el.muteBtn) {
+    el.muteBtn.addEventListener("click", () => {
+      safeAudio((A) => {
+        A.init();
+        A.setMuted(!A.isMuted());
+      });
+      updateMuteBtn();
+    });
+  }
+  updateMuteBtn();
 
   el.fastBtn.addEventListener("click", () => {
     state.fastMode = !state.fastMode;
@@ -903,6 +1155,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !state.spinning && !state.inBonus) {
       e.preventDefault();
+      safeAudio((A) => A.init());
       spin();
     }
   });
@@ -911,6 +1164,7 @@
 
   buildInitialGrid();
   buildPaytable();
+  updateTestBanner();
   el.balance.textContent = formatNumber(state.balance);
   el.bet.textContent = state.bet;
   el.lastWin.textContent = "0";
