@@ -85,6 +85,9 @@
     spinBtnLabel: document.getElementById("spinBtnLabel"),
     autoBtn: document.getElementById("autoBtn"),
     fastBtn: document.getElementById("fastBtn"),
+    machineWrap: document.querySelector(".machine-wrap"),
+    lever: document.getElementById("leverBtn"),
+    leverRod: document.getElementById("leverRod"),
     paytableList: document.getElementById("paytableList"),
     popup: document.getElementById("popup"),
     popupTitle: document.getElementById("popupTitle"),
@@ -415,9 +418,7 @@
     return cell;
   }
 
-  function applyCoinFace(cell, coin) {
-    cell.classList.add("locked");
-    cell.innerHTML = "";
+  function buildCoinFaceEl(coin) {
     const face = document.createElement("div");
     face.className = "coin-face" + (coin.rare ? " coin-rare" : "");
     const amount = document.createElement("span");
@@ -430,7 +431,22 @@
       badge.textContent = `×${coin.rare}`;
       face.appendChild(badge);
     }
-    cell.appendChild(face);
+    return face;
+  }
+
+  function applyCoinFace(cell, coin) {
+    cell.classList.add("locked");
+    cell.innerHTML = "";
+    cell.appendChild(buildCoinFaceEl(coin));
+  }
+
+  function makeGhostSlot() {
+    const slot = document.createElement("div");
+    slot.className = "coin-slot";
+    const face = document.createElement("div");
+    face.className = "coin-face coin-ghost";
+    slot.appendChild(face);
+    return slot;
   }
 
   function renderCoinGrid() {
@@ -445,35 +461,72 @@
     }
   }
 
-  function playCoinReveal(newlyLanded) {
+  // spins a single coin cell like a tiny reel: blurred ghost coins fall past from above,
+  // then it settles on the final result (a locked coin, or empty if it didn't land).
+  const GHOST_COUNT = 5;
+  function spinCoinCell(cellEl, finalCoin, duration) {
     return new Promise((resolve) => {
-      const cols = [...el.reelWindow.children];
-      const landedSet = new Set(newlyLanded.map(([c, r]) => `${c},${r}`));
+      const strip = document.createElement("div");
+      strip.className = "coin-strip";
 
-      for (let c = 0; c < COLS; c++) {
-        for (let r = 0; r < ROWS; r++) {
-          const key = `${c},${r}`;
-          if (state.coinGrid[c][r] && !landedSet.has(key)) continue; // already-locked coin, leave it
-          cols[c].children[r].classList.add("spin-flicker");
-        }
-      }
+      const finalSlot = document.createElement("div");
+      finalSlot.className = "coin-slot";
+      if (finalCoin) finalSlot.appendChild(buildCoinFaceEl(finalCoin));
+      strip.appendChild(finalSlot);
+      for (let i = 0; i < GHOST_COUNT; i++) strip.appendChild(makeGhostSlot());
 
-      setTimeout(() => {
-        for (let c = 0; c < COLS; c++) {
-          for (let r = 0; r < ROWS; r++) {
-            const key = `${c},${r}`;
-            const cell = cols[c].children[r];
-            cell.classList.remove("spin-flicker");
-            if (landedSet.has(key)) {
-              applyCoinFace(cell, state.coinGrid[c][r]);
+      cellEl.classList.remove("locked");
+      cellEl.innerHTML = "";
+      cellEl.appendChild(strip);
+
+      strip.style.transition = "none";
+      strip.style.filter = "blur(0px)";
+      strip.style.transform = `translateY(-${GHOST_COUNT * 100}%)`;
+
+      // force reflow before starting the transition
+      // eslint-disable-next-line no-unused-expressions
+      strip.offsetHeight;
+
+      strip.style.filter = "blur(3px)";
+      strip.style.transition = `transform ${duration}ms cubic-bezier(0.22, 0.85, 0.3, 1), filter ${duration}ms ease-out`;
+      strip.style.transform = "translateY(0)";
+      strip.style.filter = "blur(0px)";
+
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        strip.removeEventListener("transitionend", onEnd);
+        cellEl.innerHTML = "";
+        if (finalCoin) applyCoinFace(cellEl, finalCoin);
+        resolve();
+      };
+      strip.addEventListener("transitionend", onEnd);
+    });
+  }
+
+  function playCoinReveal(newlyLanded) {
+    const cols = [...el.reelWindow.children];
+    const landedSet = new Set(newlyLanded.map(([c, r]) => `${c},${r}`));
+    const jobs = [];
+
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        const key = `${c},${r}`;
+        if (state.coinGrid[c][r] && !landedSet.has(key)) continue; // already-locked coin, leave it
+        const cell = cols[c].children[r];
+        const finalCoin = landedSet.has(key) ? state.coinGrid[c][r] : null;
+        const duration = ms(520 + (c + r) * 20 + Math.random() * 100);
+        jobs.push(
+          spinCoinCell(cell, finalCoin, duration).then(() => {
+            if (finalCoin) {
               cell.classList.add("just-landed");
               setTimeout(() => cell.classList.remove("just-landed"), ms(700));
             }
-          }
-        }
-        resolve();
-      }, ms(550));
-    });
+          })
+        );
+      }
+    }
+
+    return Promise.all(jobs);
   }
 
   async function coinModeSpin() {
@@ -549,6 +602,7 @@
     state.inCoinMode = false;
     state.coinGrid = [];
     el.freeSpinsStat.hidden = true;
+    el.machineWrap.classList.remove("bonus-active");
     buildInitialGrid();
     setMessage("Zurück im Hauptspiel. Viel Glück!", null);
     setControlsEnabled(true);
@@ -681,10 +735,23 @@
   // ---------- spin flow ----------
 
   function setControlsEnabled(enabled) {
-    el.spinBtn.disabled = !enabled || state.inBonus;
-    el.betUp.disabled = !enabled || state.inBonus;
-    el.betDown.disabled = !enabled || state.inBonus;
-    el.autoBtn.disabled = !enabled || state.inBonus;
+    const disabled = !enabled || state.inBonus;
+    el.spinBtn.disabled = disabled;
+    el.betUp.disabled = disabled;
+    el.betDown.disabled = disabled;
+    el.autoBtn.disabled = disabled;
+    el.lever.disabled = disabled;
+  }
+
+  function pullLever() {
+    el.lever.classList.remove("pulled");
+    el.leverRod.style.animationDuration = "";
+    // eslint-disable-next-line no-unused-expressions
+    el.leverRod.offsetWidth;
+    const duration = ms(900);
+    el.leverRod.style.animationDuration = `${duration}ms`;
+    el.lever.classList.add("pulled");
+    setTimeout(() => el.lever.classList.remove("pulled"), duration);
   }
 
   async function spin() {
@@ -765,6 +832,7 @@
       state.coinFilled = 0;
       el.freeSpinsStat.hidden = false;
       el.freeSpinsValue.textContent = state.coinSpinsLeft;
+      el.machineWrap.classList.add("bonus-active");
       renderCoinGrid();
       await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
       setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
@@ -819,6 +887,12 @@
 
   el.spinBtn.addEventListener("click", spin);
   el.autoBtn.addEventListener("click", toggleAutoSpin);
+
+  el.lever.addEventListener("click", () => {
+    if (el.lever.disabled) return;
+    pullLever();
+    spin();
+  });
 
   el.fastBtn.addEventListener("click", () => {
     state.fastMode = !state.fastMode;

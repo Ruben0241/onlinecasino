@@ -20,7 +20,9 @@
   </header>
 
   <main class="stage">
-    <div class="machine">
+    <div class="machine-wrap">
+      <div class="machine-aura" id="machineAura"></div>
+      <div class="machine">
 
       <div class="stat-row">
         <div class="stat">
@@ -60,6 +62,15 @@
         <ul class="paytable" id="paytableList"></ul>
         <p class="paytable-note">3+ gleiche Symbole auf einer der vielen Gewinnlinien (waagerecht, senkrecht, diagonal, im Zickzack) zahlen — auch mehrere Linien gleichzeitig. 3+ 🎰-Symbole irgendwo lösen die Münzjagd aus: mind. 3 Spins, jede neue Münze setzt den Zähler zurück, bei vollem Gitter oder 0 Spins endet die Runde.</p>
       </details>
+      </div>
+
+      <button class="lever" id="leverBtn" aria-label="Hebel ziehen zum Drehen" title="Hebel ziehen zum Drehen" disabled>
+        <span class="lever-mount">
+          <span class="lever-rod" id="leverRod">
+            <span class="lever-knob"></span>
+          </span>
+        </span>
+      </button>
     </div>
   </main>
 
