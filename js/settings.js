@@ -10,8 +10,8 @@
     symbolRows: document.getElementById("symbolRows"),
     scatterRow: document.getElementById("scatterRow"),
     scatterTrigger: document.getElementById("scatterTrigger"),
-    freeSpinsAward: document.getElementById("freeSpinsAward"),
-    freeSpinsRetrigger: document.getElementById("freeSpinsRetrigger"),
+    coinMinSpins: document.getElementById("coinMinSpins"),
+    coinLandChancePct: document.getElementById("coinLandChancePct"),
     bonusWinMult: document.getElementById("bonusWinMult"),
     bigWinMult: document.getElementById("bigWinMult"),
     megaWinMult: document.getElementById("megaWinMult"),
@@ -127,8 +127,8 @@
     el.scatterRow.appendChild(scatterRow);
 
     el.scatterTrigger.value = cfg.scatterTrigger;
-    el.freeSpinsAward.value = cfg.freeSpinsAward;
-    el.freeSpinsRetrigger.value = cfg.freeSpinsRetrigger;
+    el.coinMinSpins.value = cfg.coinMinSpins;
+    el.coinLandChancePct.value = cfg.coinLandChancePct;
     el.bonusWinMult.value = cfg.bonusWinMult;
     el.bigWinMult.value = cfg.bigWinMult;
     el.megaWinMult.value = cfg.megaWinMult;
@@ -147,12 +147,12 @@
     if (scatterPill) scatterPill.textContent = `${(p * 100).toFixed(1)}% pro Feld`;
 
     const bonusChance = probAtLeast(GRID_CELLS, Number(el.scatterTrigger.value), p);
-    el.bonusProb.textContent = `Geschätzte Freispiel-Chance pro Spin: ${(bonusChance * 100).toFixed(2)}%`;
+    el.bonusProb.textContent = `Geschätzte Münzjagd-Chance pro Spin: ${(bonusChance * 100).toFixed(2)}%`;
   }
 
   // ---------- wiring ----------
 
-  [el.scatterTrigger, el.freeSpinsAward, el.freeSpinsRetrigger, el.bonusWinMult, el.bigWinMult, el.megaWinMult].forEach(
+  [el.scatterTrigger, el.coinMinSpins, el.coinLandChancePct, el.bonusWinMult, el.bigWinMult, el.megaWinMult].forEach(
     (input) => {
       input.addEventListener("input", updateProbabilities);
     }
@@ -160,8 +160,8 @@
 
   function readFormIntoConfig() {
     cfg.scatterTrigger = Math.max(2, Math.min(GRID_CELLS, Number(el.scatterTrigger.value) || 3));
-    cfg.freeSpinsAward = Math.max(1, Number(el.freeSpinsAward.value) || 1);
-    cfg.freeSpinsRetrigger = Math.max(0, Number(el.freeSpinsRetrigger.value) || 0);
+    cfg.coinMinSpins = Math.max(2, Number(el.coinMinSpins.value) || 2);
+    cfg.coinLandChancePct = Math.max(1, Math.min(100, Number(el.coinLandChancePct.value) || 1));
     cfg.bonusWinMult = Math.max(1, Number(el.bonusWinMult.value) || 1);
     cfg.bigWinMult = Math.max(1, Number(el.bigWinMult.value) || 1);
     cfg.megaWinMult = Math.max(cfg.bigWinMult, Number(el.megaWinMult.value) || cfg.bigWinMult);

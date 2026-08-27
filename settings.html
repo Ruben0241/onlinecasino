@@ -30,7 +30,7 @@
       </section>
 
       <section class="settings-section">
-        <h2 class="section-title">Scatter &amp; Freispiele</h2>
+        <h2 class="section-title">Scatter &amp; Münzjagd</h2>
         <div class="symbol-rows" id="scatterRow"></div>
 
         <div class="field-grid">
@@ -39,12 +39,12 @@
             <input type="number" id="scatterTrigger" min="2" max="12" step="1">
           </label>
           <label class="field">
-            <span class="field-label">Freispiele bei Trigger</span>
-            <input type="number" id="freeSpinsAward" min="1" max="50" step="1">
+            <span class="field-label">Start-/Reset-Spins (Münzjagd)</span>
+            <input type="number" id="coinMinSpins" min="2" max="10" step="1">
           </label>
           <label class="field">
-            <span class="field-label">Freispiele bei Retrigger</span>
-            <input type="number" id="freeSpinsRetrigger" min="0" max="50" step="1">
+            <span class="field-label">Münzchance pro Feld (%)</span>
+            <input type="number" id="coinLandChancePct" min="1" max="50" step="1">
           </label>
           <label class="field">
             <span class="field-label">Gewinn-Multiplikator im Bonus</span>
@@ -52,6 +52,10 @@
           </label>
         </div>
 
+        <p class="section-hint">
+          In der Münzjagd starten/resetten sich die Spins immer wieder auf diesen Wert, sobald eine neue Münze landet.
+          Ohne neue Münze zählt der Zähler runter; bei 0 oder vollem Gitter endet die Runde und alle Münzwerte werden ausgezahlt.
+        </p>
         <div class="prob-summary" id="bonusProb"></div>
       </section>
 

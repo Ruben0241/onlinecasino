@@ -19,12 +19,36 @@
   const BET_STEP = 20;
 
   const SCATTER_TRIGGER = CFG.scatterTrigger;
-  const FREE_SPINS_AWARD = CFG.freeSpinsAward;
-  const FREE_SPINS_RETRIGGER = CFG.freeSpinsRetrigger;
   const BONUS_WIN_MULT = CFG.bonusWinMult;
 
   const BIG_WIN_MULT = CFG.bigWinMult;
   const MEGA_WIN_MULT = CFG.megaWinMult;
+
+  // ---------- coin mode (Hold & Win style bonus) ----------
+
+  const COIN_MIN_SPINS = CFG.coinMinSpins;
+  const COIN_LAND_CHANCE = CFG.coinLandChancePct / 100;
+  const COIN_RARE_CHANCE = 0.07;
+  const COIN_RARE_MULTS = [2, 3, 5, 10];
+  const COIN_VALUE_TABLE = [
+    { mult: 1, weight: 40 },
+    { mult: 1.5, weight: 24 },
+    { mult: 2, weight: 16 },
+    { mult: 3, weight: 10 },
+    { mult: 5, weight: 6 },
+    { mult: 10, weight: 3 },
+    { mult: 25, weight: 1 },
+  ];
+  const COIN_VALUE_TOTAL_WEIGHT = COIN_VALUE_TABLE.reduce((sum, v) => sum + v.weight, 0);
+
+  function weightedCoinValueMult() {
+    let roll = Math.random() * COIN_VALUE_TOTAL_WEIGHT;
+    for (const v of COIN_VALUE_TABLE) {
+      if (roll < v.weight) return v.mult;
+      roll -= v.weight;
+    }
+    return COIN_VALUE_TABLE[0].mult;
+  }
 
   const state = {
     balance: 1000,
@@ -33,9 +57,10 @@
     grid: [],
     lastWin: 0,
     inBonus: false,
-    freeSpinsLeft: 0,
-    freeSpinsTotal: 0,
-    bonusTotalWin: 0,
+    inCoinMode: false,
+    coinGrid: [],
+    coinSpinsLeft: 0,
+    coinFilled: 0,
     autoSpinsLeft: 0,
   };
 
@@ -160,7 +185,7 @@
     img.alt = "scatter";
     const label = document.createElement("span");
     label.className = "pt-mult";
-    label.textContent = `${SCATTER_TRIGGER}+ = Freispiele`;
+    label.textContent = `${SCATTER_TRIGGER}+ = Münzjagd`;
     li.appendChild(img);
     li.appendChild(label);
     el.paytableList.appendChild(li);
@@ -235,24 +260,83 @@
     setTimeout(() => document.querySelector(".machine").classList.remove(cls), mega ? 1500 : 550);
   }
 
+  // ---------- paylines (horizontal, vertical, diagonal, zigzag) ----------
+
+  function buildPaylines() {
+    const lines = [];
+
+    // horizontal — one per row
+    for (let r = 0; r < ROWS; r++) {
+      const cells = [];
+      for (let c = 0; c < COLS; c++) cells.push([c, r]);
+      lines.push(cells);
+    }
+
+    // vertical — one per column
+    for (let c = 0; c < COLS; c++) {
+      const cells = [];
+      for (let r = 0; r < ROWS; r++) cells.push([c, r]);
+      lines.push(cells);
+    }
+
+    // diagonals (down-right and down-left), length = ROWS
+    for (let startCol = 0; startCol <= COLS - ROWS; startCol++) {
+      const down = [];
+      const up = [];
+      for (let r = 0; r < ROWS; r++) {
+        down.push([startCol + r, r]);
+        up.push([startCol + r, ROWS - 1 - r]);
+      }
+      lines.push(down);
+      lines.push(up);
+    }
+
+    // zigzag paylines across all reels (classic V / W patterns)
+    const zigzagPatterns = [
+      [0, 1, 2, 3, 2, 1],
+      [3, 2, 1, 0, 1, 2],
+      [1, 0, 1, 0, 1, 0],
+      [2, 3, 2, 3, 2, 3],
+      [0, 0, 1, 2, 3, 3],
+      [3, 3, 2, 1, 0, 0],
+    ];
+    zigzagPatterns.forEach((pattern) => {
+      lines.push(pattern.map((r, c) => [c, r]));
+    });
+
+    return lines;
+  }
+
+  const PAYLINES = buildPaylines();
+
   // ---------- win evaluation ----------
 
   function evaluateGrid(resultGrid) {
     let totalWin = 0;
-    const winningCells = [];
+    let winLineCount = 0;
+    const winCellMap = new Map();
+    const lineBet = state.bet / PAYLINES.length;
 
-    for (let r = 0; r < ROWS; r++) {
-      const first = resultGrid[0][r];
-      if (first.scatter) continue;
+    PAYLINES.forEach((cells) => {
+      const [c0, r0] = cells[0];
+      const first = resultGrid[c0][r0];
+      if (first.scatter) return;
       let run = 1;
-      while (run < COLS && resultGrid[run][r].key === first.key) run++;
+      while (run < cells.length) {
+        const [c, r] = cells[run];
+        if (resultGrid[c][r].key !== first.key) break;
+        run++;
+      }
       if (run >= 3) {
-        const lineBet = state.bet / ROWS;
         const win = lineBet * first.mult * RUN_MULT[run];
         totalWin += win;
-        for (let c = 0; c < run; c++) winningCells.push([c, r]);
+        winLineCount++;
+        for (let i = 0; i < run; i++) {
+          const [c, r] = cells[i];
+          winCellMap.set(`${c},${r}`, [c, r]);
+        }
       }
-    }
+    });
 
     let scatterCount = 0;
     for (let c = 0; c < COLS; c++) {
@@ -261,7 +345,158 @@
       }
     }
 
-    return { totalWin, winningCells, scatterCount };
+    return { totalWin, winLineCount, winningCells: [...winCellMap.values()], scatterCount };
+  }
+
+  // ---------- coin mode grid ----------
+
+  function makeCoinCell(c, r) {
+    const cell = document.createElement("div");
+    cell.className = "coin-cell";
+    cell.dataset.c = c;
+    cell.dataset.r = r;
+    const coin = state.coinGrid[c][r];
+    if (coin) applyCoinFace(cell, coin);
+    return cell;
+  }
+
+  function applyCoinFace(cell, coin) {
+    cell.classList.add("locked");
+    cell.innerHTML = "";
+    const face = document.createElement("div");
+    face.className = "coin-face" + (coin.rare ? " coin-rare" : "");
+    const amount = document.createElement("span");
+    amount.className = "coin-amount";
+    amount.textContent = formatNumber(coin.value);
+    face.appendChild(amount);
+    if (coin.rare) {
+      const badge = document.createElement("span");
+      badge.className = "coin-badge";
+      badge.textContent = `×${coin.rare}`;
+      face.appendChild(badge);
+    }
+    cell.appendChild(face);
+  }
+
+  function renderCoinGrid() {
+    el.reelWindow.innerHTML = "";
+    for (let c = 0; c < COLS; c++) {
+      const col = document.createElement("div");
+      col.className = "coin-col";
+      for (let r = 0; r < ROWS; r++) {
+        col.appendChild(makeCoinCell(c, r));
+      }
+      el.reelWindow.appendChild(col);
+    }
+  }
+
+  function playCoinReveal(newlyLanded) {
+    return new Promise((resolve) => {
+      const cols = [...el.reelWindow.children];
+      const landedSet = new Set(newlyLanded.map(([c, r]) => `${c},${r}`));
+
+      for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < ROWS; r++) {
+          const key = `${c},${r}`;
+          if (state.coinGrid[c][r] && !landedSet.has(key)) continue; // already-locked coin, leave it
+          cols[c].children[r].classList.add("spin-flicker");
+        }
+      }
+
+      setTimeout(() => {
+        for (let c = 0; c < COLS; c++) {
+          for (let r = 0; r < ROWS; r++) {
+            const key = `${c},${r}`;
+            const cell = cols[c].children[r];
+            cell.classList.remove("spin-flicker");
+            if (landedSet.has(key)) {
+              applyCoinFace(cell, state.coinGrid[c][r]);
+              cell.classList.add("just-landed");
+              setTimeout(() => cell.classList.remove("just-landed"), 700);
+            }
+          }
+        }
+        resolve();
+      }, 550);
+    });
+  }
+
+  async function coinModeSpin() {
+    state.spinning = true;
+    setControlsEnabled(false);
+    setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
+
+    const newlyLanded = [];
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        if (state.coinGrid[c][r]) continue;
+        if (Math.random() < COIN_LAND_CHANCE) {
+          const mult = weightedCoinValueMult();
+          const rare = Math.random() < COIN_RARE_CHANCE
+            ? COIN_RARE_MULTS[Math.floor(Math.random() * COIN_RARE_MULTS.length)]
+            : null;
+          const value = state.bet * mult * (rare || 1) * BONUS_WIN_MULT;
+          state.coinGrid[c][r] = { mult, rare, value };
+          newlyLanded.push([c, r]);
+        }
+      }
+    }
+
+    await playCoinReveal(newlyLanded);
+    state.coinFilled += newlyLanded.length;
+
+    if (newlyLanded.length > 0) {
+      state.coinSpinsLeft = COIN_MIN_SPINS;
+      shakeMachine(newlyLanded.length >= 3);
+    } else {
+      state.coinSpinsLeft -= 1;
+    }
+    el.freeSpinsValue.textContent = Math.max(0, state.coinSpinsLeft);
+
+    const gridFull = state.coinFilled >= COLS * ROWS;
+
+    if (gridFull || state.coinSpinsLeft <= 0) {
+      await finishCoinMode(gridFull);
+      return;
+    }
+
+    setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
+    state.spinning = false;
+    setTimeout(spin, 850);
+  }
+
+  async function finishCoinMode(gridFull) {
+    let total = 0;
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        const coin = state.coinGrid[c][r];
+        if (coin) total += coin.value;
+      }
+    }
+
+    state.balance += total;
+    el.balance.textContent = formatNumber(state.balance);
+    flash(el.balance);
+    state.lastWin = total;
+    el.lastWin.textContent = formatNumber(total);
+    flash(el.lastWin);
+
+    state.spinning = false;
+
+    if (gridFull) {
+      shakeMachine(true);
+      await showPopup("GITTER VOLL!", total, "Alle Felder gefüllt — Jackpot!", 260, true);
+    } else {
+      await showPopup("MÜNZJAGD BEENDET", total, "Gesamtgewinn der Münzjagd", 180, total >= state.bet * BIG_WIN_MULT);
+    }
+
+    state.inBonus = false;
+    state.inCoinMode = false;
+    state.coinGrid = [];
+    el.freeSpinsStat.hidden = true;
+    buildInitialGrid();
+    setMessage("Zurück im Hauptspiel. Viel Glück!", null);
+    setControlsEnabled(true);
   }
 
   // ---------- confetti ----------
@@ -399,6 +634,12 @@
 
   async function spin() {
     if (state.spinning) return;
+
+    if (state.inCoinMode) {
+      await coinModeSpin();
+      return;
+    }
+
     if (!state.inBonus && state.balance < state.bet) {
       setMessage("Nicht genug Guthaben. Einsatz verringern.", null);
       stopAutoSpin();
@@ -409,15 +650,11 @@
     setControlsEnabled(false);
     el.reelWindow.querySelectorAll(".cell-win").forEach((c) => c.classList.remove("cell-win"));
 
-    if (state.inBonus) {
-      setMessage(`Freispiel läuft… (${state.freeSpinsTotal - state.freeSpinsLeft + 1}/${state.freeSpinsTotal})`, "bonus");
-    } else {
-      const prev = state.balance;
-      state.balance -= state.bet;
-      el.balance.textContent = formatNumber(state.balance);
-      flash(el.balance);
-      setMessage("Viel Glück!", null);
-    }
+    const prev = state.balance;
+    state.balance -= state.bet;
+    el.balance.textContent = formatNumber(state.balance);
+    flash(el.balance);
+    setMessage("Viel Glück!", null);
 
     const resultGrid = [];
     for (let c = 0; c < COLS; c++) {
@@ -429,8 +666,8 @@
     await playSpinAnimation(resultGrid);
     state.grid = resultGrid;
 
-    const { totalWin, winningCells, scatterCount } = evaluateGrid(resultGrid);
-    const appliedWin = state.inBonus ? totalWin * BONUS_WIN_MULT : totalWin;
+    const { totalWin, winLineCount, winningCells, scatterCount } = evaluateGrid(resultGrid);
+    const appliedWin = totalWin;
 
     if (appliedWin > 0) {
       markWinCells(winningCells);
@@ -443,8 +680,6 @@
     el.lastWin.textContent = formatNumber(appliedWin);
     if (appliedWin > 0) flash(el.lastWin);
 
-    if (state.inBonus) state.bonusTotalWin += appliedWin;
-
     const triggered = scatterCount >= SCATTER_TRIGGER;
 
     if (appliedWin >= state.bet * MEGA_WIN_MULT) {
@@ -455,45 +690,29 @@
       shakeMachine(false);
       await showPopup("GROSSER GEWINN!", appliedWin, "", 130);
     } else if (appliedWin > 0) {
-      setMessage(`Gewinn: +${formatNumber(appliedWin)} Coins`, "win");
-    } else if (!state.inBonus && !triggered) {
+      if (winLineCount > 1) {
+        setMessage(`${winLineCount}x KOMBI-GEWINN! +${formatNumber(appliedWin)} Coins`, "win");
+        if (winLineCount >= 3) shakeMachine(false);
+      } else {
+        setMessage(`Gewinn: +${formatNumber(appliedWin)} Coins`, "win");
+      }
+    } else if (!triggered) {
       setMessage("Kein Treffer — nochmal versuchen!", null);
     }
 
     if (triggered) {
-      if (!state.inBonus) {
-        state.inBonus = true;
-        state.freeSpinsLeft = FREE_SPINS_AWARD;
-        state.freeSpinsTotal = FREE_SPINS_AWARD;
-        state.bonusTotalWin = appliedWin;
-        el.freeSpinsStat.hidden = false;
-        el.freeSpinsValue.textContent = state.freeSpinsLeft;
-        await showPopup("FREISPIELE!", FREE_SPINS_AWARD, "Gewinne zählen doppelt", 180);
-        setMessage(`Freispiele gestartet: ${FREE_SPINS_AWARD}`, "bonus");
-      } else {
-        state.freeSpinsLeft += FREE_SPINS_RETRIGGER;
-        state.freeSpinsTotal += FREE_SPINS_RETRIGGER;
-        await showPopup("+FREISPIELE!", FREE_SPINS_RETRIGGER, "Erneut ausgelöst", 130);
-      }
-    }
-
-    if (state.inBonus) {
-      state.freeSpinsLeft -= 1;
-      el.freeSpinsValue.textContent = Math.max(0, state.freeSpinsLeft);
-
-      if (state.freeSpinsLeft <= 0) {
-        const finishedWin = state.bonusTotalWin;
-        state.spinning = false;
-        await showPopup("BONUS BEENDET", finishedWin, "Gesamtgewinn der Freispiele", 200);
-        state.inBonus = false;
-        el.freeSpinsStat.hidden = true;
-        setMessage("Zurück im Hauptspiel. Viel Glück!", null);
-        setControlsEnabled(true);
-        return;
-      }
-
+      state.inBonus = true;
+      state.inCoinMode = true;
+      state.coinGrid = Array.from({ length: COLS }, () => Array(ROWS).fill(null));
+      state.coinSpinsLeft = COIN_MIN_SPINS;
+      state.coinFilled = 0;
+      el.freeSpinsStat.hidden = false;
+      el.freeSpinsValue.textContent = state.coinSpinsLeft;
+      renderCoinGrid();
+      await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
+      setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
       state.spinning = false;
-      setTimeout(spin, 750);
+      setTimeout(spin, 850);
       return;
     }
 

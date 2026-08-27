@@ -15,8 +15,8 @@
     ],
     scatter: { key: "scatter", img: "img/symbols/scatter.svg", weight: 2 },
     scatterTrigger: 3,
-    freeSpinsAward: 8,
-    freeSpinsRetrigger: 5,
+    coinMinSpins: 3,
+    coinLandChancePct: 11,
     bonusWinMult: 2,
     bigWinMult: 8,
     megaWinMult: 20,
@@ -49,7 +49,7 @@
       if (saved.scatter && typeof saved.scatter.weight === "number" && saved.scatter.weight >= 0) {
         cfg.scatter.weight = saved.scatter.weight;
       }
-      ["scatterTrigger", "freeSpinsAward", "freeSpinsRetrigger", "bonusWinMult", "bigWinMult", "megaWinMult"].forEach(
+      ["scatterTrigger", "coinMinSpins", "coinLandChancePct", "bonusWinMult", "bigWinMult", "megaWinMult"].forEach(
         (key) => {
           if (typeof saved[key] === "number" && saved[key] >= 0) cfg[key] = saved[key];
         }
