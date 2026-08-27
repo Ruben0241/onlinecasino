@@ -5,16 +5,10 @@
   const ROWS = 4;
   const STRIP_LEAD = 16; // random symbols scrolled through before the result lands
 
-  const SYMBOLS = [
-    { key: "cherry", img: "img/symbols/cherry.svg", weight: 24, mult: 3 },
-    { key: "lemon", img: "img/symbols/lemon.svg", weight: 20, mult: 4 },
-    { key: "grapes", img: "img/symbols/grapes.svg", weight: 16, mult: 6 },
-    { key: "clover", img: "img/symbols/clover.svg", weight: 12, mult: 8 },
-    { key: "bell", img: "img/symbols/bell.svg", weight: 9, mult: 12 },
-    { key: "gem", img: "img/symbols/gem.svg", weight: 6, mult: 20 },
-    { key: "seven", img: "img/symbols/seven.svg", weight: 3, mult: 40 },
-  ];
-  const SCATTER = { key: "scatter", img: "img/symbols/scatter.svg", weight: 2, scatter: true };
+  const CFG = window.LuckySpinConfig.loadConfig();
+
+  const SYMBOLS = CFG.symbols;
+  const SCATTER = { ...CFG.scatter, scatter: true };
   const POOL = [...SYMBOLS, SCATTER];
   const TOTAL_WEIGHT = POOL.reduce((sum, s) => sum + s.weight, 0);
 
@@ -24,13 +18,13 @@
   const MAX_BET = 400;
   const BET_STEP = 20;
 
-  const SCATTER_TRIGGER = 3;
-  const FREE_SPINS_AWARD = 8;
-  const FREE_SPINS_RETRIGGER = 5;
-  const BONUS_WIN_MULT = 2;
+  const SCATTER_TRIGGER = CFG.scatterTrigger;
+  const FREE_SPINS_AWARD = CFG.freeSpinsAward;
+  const FREE_SPINS_RETRIGGER = CFG.freeSpinsRetrigger;
+  const BONUS_WIN_MULT = CFG.bonusWinMult;
 
-  const BIG_WIN_MULT = 8;
-  const MEGA_WIN_MULT = 20;
+  const BIG_WIN_MULT = CFG.bigWinMult;
+  const MEGA_WIN_MULT = CFG.megaWinMult;
 
   const state = {
     balance: 1000,

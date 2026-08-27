@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Testeinstellungen — Lucky Spin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="top-bar">
+    <a class="brand" href="index.html">Lucky<span>Spin</span></a>
+    <div class="top-bar-right">
+      <a class="settings-link" href="index.html" title="Zurück zum Spiel">←</a>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="machine settings-card">
+      <h1 class="settings-title">Testeinstellungen</h1>
+      <p class="settings-intro">
+        Passe Gewichtungen und Auszahlungen an, um Trefferchancen und Bonus-Verhalten zu testen.
+        Änderungen gelten ab dem nächsten Spin-Reload im Hauptspiel.
+      </p>
+
+      <section class="settings-section">
+        <h2 class="section-title">Symbol-Wahrscheinlichkeiten</h2>
+        <p class="section-hint">Gewichtung bestimmt die relative Chance, dass ein Symbol auf einem Feld erscheint. Multiplikator ist die Auszahlung pro Linien-Einsatz bei 3 Treffern.</p>
+        <div class="symbol-rows" id="symbolRows"></div>
+      </section>
+
+      <section class="settings-section">
+        <h2 class="section-title">Scatter &amp; Freispiele</h2>
+        <div class="symbol-rows" id="scatterRow"></div>
+
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Scatter-Trigger (Anzahl im Grid)</span>
+            <input type="number" id="scatterTrigger" min="2" max="12" step="1">
+          </label>
+          <label class="field">
+            <span class="field-label">Freispiele bei Trigger</span>
+            <input type="number" id="freeSpinsAward" min="1" max="50" step="1">
+          </label>
+          <label class="field">
+            <span class="field-label">Freispiele bei Retrigger</span>
+            <input type="number" id="freeSpinsRetrigger" min="0" max="50" step="1">
+          </label>
+          <label class="field">
+            <span class="field-label">Gewinn-Multiplikator im Bonus</span>
+            <input type="number" id="bonusWinMult" min="1" max="10" step="0.5">
+          </label>
+        </div>
+
+        <div class="prob-summary" id="bonusProb"></div>
+      </section>
+
+      <section class="settings-section">
+        <h2 class="section-title">Gewinn-Popups</h2>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Großer Gewinn ab (× Einsatz)</span>
+            <input type="number" id="bigWinMult" min="1" max="200" step="1">
+          </label>
+          <label class="field">
+            <span class="field-label">Mega-Gewinn ab (× Einsatz)</span>
+            <input type="number" id="megaWinMult" min="1" max="500" step="1">
+          </label>
+        </div>
+      </section>
+
+      <div class="settings-actions">
+        <button class="spin-btn" id="saveBtn">Speichern</button>
+        <button class="auto-btn" id="resetBtn">Auf Standard zurücksetzen</button>
+        <span class="save-status" id="saveStatus"></span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="bottom-bar">
+    <span>Nur zu Unterhaltungszwecken · Kein echtes Geld · 18+</span>
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/settings.js"></script>
+</body>
+</html>
