@@ -19,6 +19,8 @@
   const BET_STEP = 20;
 
   const SCATTER_TRIGGER = CFG.scatterTrigger;
+  const TOP_SYMBOL = SYMBOLS.find((s) => s.top) || null;
+  const ANTICIPATION_MS = 3000;
 
   const BIG_WIN_MULT = CFG.bigWinMult;
   const MEGA_WIN_MULT = CFG.megaWinMult;
@@ -40,6 +42,7 @@
     coinFilled: 0,
     autoSpinsLeft: 0,
     fastMode: false,
+    canSlam: false,
   };
 
   // scales a millisecond duration down when fast mode is active
@@ -49,6 +52,22 @@
 
   function sleep(v) {
     return new Promise((resolve) => setTimeout(resolve, v));
+  }
+
+  // ---------- slam-stop (C3) ----------
+  // While reels are visibly spinning, the spin button turns into a STOPP
+  // button: tapping it force-resolves every currently-running reel
+  // animation immediately (the result is already decided — this just gives
+  // the player a feeling of control over the machine).
+  let activeFinishers = [];
+  function registerFinisher(fn) {
+    activeFinishers.push(fn);
+    return () => {
+      activeFinishers = activeFinishers.filter((f) => f !== fn);
+    };
+  }
+  function slamActive() {
+    activeFinishers.slice().forEach((fn) => fn());
   }
 
   const el = {
@@ -250,9 +269,10 @@
       // eslint-disable-next-line no-unused-expressions
       strip.offsetHeight;
 
+      const finalY = STRIP_LEAD * cellHeight;
       strip.style.filter = "blur(4px)";
       strip.style.transition = `transform ${duration}ms cubic-bezier(0.12, 0.85, 0.25, 1), filter ${duration}ms ease-out`;
-      strip.style.transform = `translateY(-${STRIP_LEAD * cellHeight}px)`;
+      strip.style.transform = `translateY(-${finalY}px)`;
       strip.style.filter = "blur(0px)";
 
       // F2 fix: transitionend can be swallowed (tab switch, background app,
@@ -260,9 +280,11 @@
       // leave this promise open forever and freeze every control. A timeout
       // fallback guarantees it always resolves.
       let settled = false;
+      let unregister = null;
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (unregister) unregister();
         clearTimeout(fallbackTimer);
         strip.removeEventListener("transitionend", onEnd);
         colEl.classList.remove("landing");
@@ -278,15 +300,77 @@
       };
       strip.addEventListener("transitionend", onEnd);
       const fallbackTimer = setTimeout(finish, duration + 300);
+
+      // C3 slam-stop: snaps the strip straight to its final position instead
+      // of waiting out the transition, then resolves like a normal landing.
+      unregister = registerFinisher(() => {
+        if (settled) return;
+        strip.style.transition = "none";
+        strip.style.transform = `translateY(-${finalY}px)`;
+        strip.style.filter = "blur(0px)";
+        finish();
+      });
     });
+  }
+
+  // C2 anticipation: figures out, from the (already-decided) result grid,
+  // which reels deserve the "this could be it" treatment — either because
+  // enough scatters have already landed on earlier reels to be one reel away
+  // from triggering the bonus, or because the top symbol (or wild) has run
+  // unbroken from reel 1 for at least two reels already.
+  function computeAnticipation(resultGrid) {
+    const anticipated = new Array(COLS).fill(false);
+    let scatterCount = 0;
+    let topRun = 0;
+    let topRunActive = true;
+
+    for (let c = 0; c < COLS; c++) {
+      const scatterSuspense = scatterCount >= SCATTER_TRIGGER - 1;
+      const topSuspense = topRunActive && topRun >= 2;
+      if (scatterSuspense || topSuspense) anticipated[c] = true;
+
+      let hasScatter = false;
+      let hasTopOrWild = false;
+      for (let r = 0; r < ROWS; r++) {
+        const s = resultGrid[c][r];
+        if (s.scatter) hasScatter = true;
+        if (s.wild || (TOP_SYMBOL && s.key === TOP_SYMBOL.key)) hasTopOrWild = true;
+      }
+      if (hasScatter) scatterCount++;
+      if (topRunActive) {
+        if (hasTopOrWild) topRun++;
+        else topRunActive = false;
+      }
+    }
+    return anticipated;
   }
 
   async function playSpinAnimation(resultGrid) {
     el.reelFrame.classList.add("spinning");
     const cols = [...el.reelWindow.children];
-    const durations = [900, 1150, 1400, 1650, 1900, 2150].map(ms);
-    const promises = cols.map((colEl, c) => spinColumn(colEl, resultGrid[c], durations[c]));
+    const anticipated = computeAnticipation(resultGrid);
+    const baseDurations = [900, 1150, 1400, 1650, 1900, 2150];
+    const durations = baseDurations.map((d, c) => ms(anticipated[c] ? Math.max(d, ANTICIPATION_MS) : d));
+
+    // slam-stop is only offered during the visible reel spin
+    state.canSlam = true;
+    el.spinBtn.disabled = false;
+    el.spinBtn.classList.add("slam-ready");
+    el.spinBtnLabel.textContent = "STOPP";
+
+    const promises = cols.map((colEl, c) => {
+      if (anticipated[c]) colEl.classList.add("anticipation");
+      return spinColumn(colEl, resultGrid[c], durations[c]).then((r) => {
+        colEl.classList.remove("anticipation");
+        return r;
+      });
+    });
     await Promise.all(promises);
+
+    state.canSlam = false;
+    el.spinBtn.classList.remove("slam-ready");
+    el.spinBtnLabel.textContent = "SPIN";
+    el.spinBtn.disabled = true;
     el.reelFrame.classList.remove("spinning");
   }
 
@@ -826,7 +910,13 @@
     el.bet.textContent = state.bet;
   });
 
-  el.spinBtn.addEventListener("click", spin);
+  el.spinBtn.addEventListener("click", () => {
+    if (state.canSlam) {
+      slamActive();
+      return;
+    }
+    spin();
+  });
   el.autoBtn.addEventListener("click", toggleAutoSpin);
 
   el.lever.addEventListener("click", () => {
