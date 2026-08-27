@@ -62,7 +62,13 @@
     coinSpinsLeft: 0,
     coinFilled: 0,
     autoSpinsLeft: 0,
+    fastMode: false,
   };
+
+  // scales a millisecond duration down when fast mode is active
+  function ms(v) {
+    return state.fastMode ? Math.round(v * 0.35) : v;
+  }
 
   const el = {
     balance: document.getElementById("balanceValue"),
@@ -78,6 +84,7 @@
     spinBtn: document.getElementById("spinBtn"),
     spinBtnLabel: document.getElementById("spinBtnLabel"),
     autoBtn: document.getElementById("autoBtn"),
+    fastBtn: document.getElementById("fastBtn"),
     paytableList: document.getElementById("paytableList"),
     popup: document.getElementById("popup"),
     popupTitle: document.getElementById("popupTitle"),
@@ -103,10 +110,13 @@
 
   function flash(elm) {
     elm.classList.remove("flash");
+    elm.style.animationDuration = "";
     // eslint-disable-next-line no-unused-expressions
     elm.offsetWidth;
+    const duration = ms(500);
+    elm.style.animationDuration = `${duration}ms`;
     elm.classList.add("flash");
-    setTimeout(() => elm.classList.remove("flash"), 400);
+    setTimeout(() => elm.classList.remove("flash"), duration);
   }
 
   function setMessage(text, kind) {
@@ -225,7 +235,7 @@
         // eslint-disable-next-line no-unused-expressions
         colEl.offsetWidth;
         colEl.classList.add("landing");
-        setTimeout(() => colEl.classList.remove("landing"), 450);
+        setTimeout(() => colEl.classList.remove("landing"), ms(450));
         resolve(strip);
       };
       strip.addEventListener("transitionend", onEnd);
@@ -235,7 +245,7 @@
   async function playSpinAnimation(resultGrid) {
     el.reelFrame.classList.add("spinning");
     const cols = [...el.reelWindow.children];
-    const durations = [900, 1150, 1400, 1650, 1900, 2150];
+    const durations = [900, 1150, 1400, 1650, 1900, 2150].map(ms);
     const promises = cols.map((colEl, c) => spinColumn(colEl, resultGrid[c], durations[c]));
     await Promise.all(promises);
     el.reelFrame.classList.remove("spinning");
@@ -258,7 +268,7 @@
     // eslint-disable-next-line no-unused-expressions
     document.querySelector(".machine").offsetWidth;
     document.querySelector(".machine").classList.add(cls);
-    setTimeout(() => document.querySelector(".machine").classList.remove(cls), mega ? 1500 : 550);
+    setTimeout(() => document.querySelector(".machine").classList.remove(cls), ms(mega ? 1500 : 550));
   }
 
   // ---------- paylines (horizontal, vertical, diagonal, zigzag) ----------
@@ -423,12 +433,12 @@
             if (landedSet.has(key)) {
               applyCoinFace(cell, state.coinGrid[c][r]);
               cell.classList.add("just-landed");
-              setTimeout(() => cell.classList.remove("just-landed"), 700);
+              setTimeout(() => cell.classList.remove("just-landed"), ms(700));
             }
           }
         }
         resolve();
-      }, 550);
+      }, ms(550));
     });
   }
 
@@ -473,7 +483,7 @@
 
     setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
     state.spinning = false;
-    setTimeout(spin, 850);
+    setTimeout(spin, ms(850));
   }
 
   async function finishCoinMode(gridFull) {
@@ -614,7 +624,7 @@
       shakeMachine(true);
     }
 
-    const duration = 900;
+    const duration = ms(900);
     const start = performance.now();
     function tick(now) {
       const p = Math.min(1, (now - start) / duration);
@@ -630,7 +640,7 @@
         resolve();
       };
       el.popup.addEventListener("click", dismiss);
-      setTimeout(dismiss, 2600);
+      setTimeout(dismiss, ms(2600));
     });
   }
 
@@ -723,7 +733,7 @@
       await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
       setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
       state.spinning = false;
-      setTimeout(spin, 850);
+      setTimeout(spin, ms(850));
       return;
     }
 
@@ -733,7 +743,7 @@
     if (state.autoSpinsLeft > 0) {
       state.autoSpinsLeft -= 1;
       if (state.autoSpinsLeft > 0 && state.balance >= state.bet) {
-        setTimeout(spin, 500);
+        setTimeout(spin, ms(500));
       } else {
         stopAutoSpin();
       }
@@ -773,6 +783,12 @@
 
   el.spinBtn.addEventListener("click", spin);
   el.autoBtn.addEventListener("click", toggleAutoSpin);
+
+  el.fastBtn.addEventListener("click", () => {
+    state.fastMode = !state.fastMode;
+    el.fastBtn.classList.toggle("active", state.fastMode);
+    el.fastBtn.textContent = state.fastMode ? "⚡ Fast AN" : "⚡ Fast";
+  });
 
   document.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !state.spinning && !state.inBonus) {
