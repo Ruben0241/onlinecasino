@@ -2,8 +2,9 @@
   "use strict";
 
   const GRID_CELLS = 24; // 6 columns x 4 rows, mirrors script.js
+  const PAY_COUNTS = [3, 4, 5, 6];
 
-  const { loadConfig, saveConfig, resetConfig, DEFAULT_CONFIG } = window.LuckySpinConfig;
+  const { loadConfig, saveConfig, resetConfig } = window.LuckySpinConfig;
   let cfg = loadConfig();
 
   const el = {
@@ -42,13 +43,25 @@
     return sum;
   }
 
-  function totalWeight() {
-    return cfg.symbols.reduce((sum, s) => sum + s.weight, 0) + cfg.scatter.weight;
+  // Wild only lands on the middle reels (2-5), so the pool total — and every
+  // other symbol's true per-field chance — differs slightly between edge and
+  // middle reels. We show the 6-reel *average* so this stays a single number
+  // per symbol; it's a test page hint, not the exact per-reel math (the
+  // simulator in sim/simulate.js is the source of truth for real RTP).
+  function reelTotals() {
+    const base = cfg.symbols.reduce((sum, s) => sum + s.weight, 0) + cfg.scatter.weight;
+    const edgeTotal = base;
+    const middleTotal = base + cfg.wild.weight;
+    const cols = cfg.cols || 6;
+    const middleCols = Math.max(0, cols - 2);
+    const avgTotal = (2 * edgeTotal + middleCols * middleTotal) / cols;
+    return { edgeTotal, middleTotal, avgTotal };
   }
 
   // ---------- row builders ----------
 
-  function buildRow(symbol, onWeightChange, onMultChange) {
+  function buildRow(symbol, opts) {
+    const { onWeightChange, payFields, note } = opts;
     const row = document.createElement("div");
     row.className = "symbol-row";
 
@@ -68,8 +81,8 @@
     const weightInput = document.createElement("input");
     weightInput.type = "range";
     weightInput.min = "0";
-    weightInput.max = "50";
-    weightInput.step = "1";
+    weightInput.max = "20";
+    weightInput.step = "0.1";
     weightInput.value = symbol.weight;
     const weightNum = document.createElement("span");
     weightNum.className = "range-value";
@@ -84,23 +97,35 @@
     weightField.appendChild(weightNum);
     row.appendChild(weightField);
 
-    if (onMultChange) {
-      const multField = document.createElement("label");
-      multField.className = "inline-field";
-      multField.innerHTML = `<span>Auszahlung ×</span>`;
-      const multInput = document.createElement("input");
-      multInput.type = "number";
-      multInput.min = "1";
-      multInput.max = "200";
-      multInput.step = "1";
-      multInput.value = symbol.mult;
-      multInput.className = "mult-input";
-      multInput.addEventListener("input", () => {
-        const v = Math.max(1, Number(multInput.value) || 1);
-        onMultChange(v);
+    if (payFields) {
+      const payWrap = document.createElement("div");
+      payWrap.className = "inline-field pay-fields";
+      payWrap.innerHTML = `<span>Auszahlung (× Einsatz je Weg)</span>`;
+      PAY_COUNTS.forEach((k) => {
+        const payLabel = document.createElement("label");
+        payLabel.className = "pay-field";
+        payLabel.innerHTML = `<span>${k}×</span>`;
+        const payInput = document.createElement("input");
+        payInput.type = "number";
+        payInput.min = "0";
+        payInput.step = "0.001";
+        payInput.value = symbol.pay[k];
+        payInput.className = "mult-input";
+        payInput.addEventListener("input", () => {
+          const v = Math.max(0, Number(payInput.value) || 0);
+          symbol.pay[k] = v;
+        });
+        payLabel.appendChild(payInput);
+        payWrap.appendChild(payLabel);
       });
-      multField.appendChild(multInput);
-      row.appendChild(multField);
+      row.appendChild(payWrap);
+    }
+
+    if (note) {
+      const noteEl = document.createElement("span");
+      noteEl.className = "inline-field symbol-note";
+      noteEl.textContent = note;
+      row.appendChild(noteEl);
     }
 
     const prob = document.createElement("span");
@@ -113,17 +138,25 @@
 
   function render() {
     el.symbolRows.innerHTML = "";
-    cfg.symbols.forEach((s, idx) => {
-      const row = buildRow(
-        s,
-        (v) => (cfg.symbols[idx].weight = v),
-        (v) => (cfg.symbols[idx].mult = v)
-      );
+    cfg.symbols.forEach((s) => {
+      const row = buildRow(s, {
+        onWeightChange: (v) => (s.weight = v),
+        payFields: true,
+      });
       el.symbolRows.appendChild(row);
     });
+    const wildRow = buildRow(cfg.wild, {
+      onWeightChange: (v) => (cfg.wild.weight = v),
+      payFields: false,
+      note: "Wild — ersetzt jedes Zahlsymbol, nur Walze 2–5",
+    });
+    el.symbolRows.appendChild(wildRow);
 
     el.scatterRow.innerHTML = "";
-    const scatterRow = buildRow(cfg.scatter, (v) => (cfg.scatter.weight = v), null);
+    const scatterRow = buildRow(cfg.scatter, {
+      onWeightChange: (v) => (cfg.scatter.weight = v),
+      payFields: false,
+    });
     el.scatterRow.appendChild(scatterRow);
 
     el.scatterTrigger.value = cfg.scatterTrigger;
@@ -137,17 +170,24 @@
   }
 
   function updateProbabilities() {
-    const total = totalWeight();
+    const { middleTotal, avgTotal } = reelTotals();
+
     cfg.symbols.forEach((s) => {
       const pill = el.symbolRows.querySelector(`.prob-pill[data-key="${s.key}"]`);
-      if (pill) pill.textContent = total > 0 ? `${((s.weight / total) * 100).toFixed(1)}% pro Feld` : "0%";
+      if (pill) pill.textContent = avgTotal > 0 ? `${((s.weight / avgTotal) * 100).toFixed(1)}% Ø pro Feld` : "0%";
     });
+
+    const wildPill = el.symbolRows.querySelector(`.prob-pill[data-key="${cfg.wild.key}"]`);
+    if (wildPill) {
+      wildPill.textContent = middleTotal > 0 ? `${((cfg.wild.weight / middleTotal) * 100).toFixed(1)}% pro Feld (Walze 2–5)` : "0%";
+    }
+
     const scatterPill = el.scatterRow.querySelector(`.prob-pill[data-key="${cfg.scatter.key}"]`);
-    const p = total > 0 ? cfg.scatter.weight / total : 0;
-    if (scatterPill) scatterPill.textContent = `${(p * 100).toFixed(1)}% pro Feld`;
+    const p = avgTotal > 0 ? cfg.scatter.weight / avgTotal : 0;
+    if (scatterPill) scatterPill.textContent = `${(p * 100).toFixed(1)}% Ø pro Feld`;
 
     const bonusChance = probAtLeast(GRID_CELLS, Number(el.scatterTrigger.value), p);
-    el.bonusProb.textContent = `Geschätzte Münzjagd-Chance pro Spin: ${(bonusChance * 100).toFixed(2)}%`;
+    el.bonusProb.textContent = `Geschätzte Münzjagd-Chance pro Spin: ${(bonusChance * 100).toFixed(2)}% (≈ 1 von ${(1 / Math.max(bonusChance, 1e-9)).toFixed(0)} Spins) — exakte Werte liefert der Simulator (sim/simulate.js).`;
   }
 
   // ---------- wiring ----------
@@ -179,7 +219,7 @@
   el.saveBtn.addEventListener("click", () => {
     readFormIntoConfig();
     saveConfig(cfg);
-    showStatus("Gespeichert ✓");
+    showStatus("Gespeichert ✓ — im Hauptspiel neu laden");
   });
 
   el.resetBtn.addEventListener("click", () => {

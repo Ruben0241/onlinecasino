@@ -1,25 +1,24 @@
 (() => {
   "use strict";
 
-  const COLS = 6;
-  const ROWS = 4;
-  const STRIP_LEAD = 16; // random symbols scrolled through before the result lands
-
+  const Engine = window.LuckySpinEngine;
   const CFG = window.LuckySpinConfig.loadConfig();
 
-  const SYMBOLS = CFG.symbols;
-  const SCATTER = { ...CFG.scatter, scatter: true };
-  const POOL = [...SYMBOLS, SCATTER];
-  const TOTAL_WEIGHT = POOL.reduce((sum, s) => sum + s.weight, 0);
+  const COLS = CFG.cols;
+  const ROWS = CFG.rows;
+  const STRIP_LEAD = 16; // random symbols scrolled through before the result lands
 
-  const RUN_MULT = { 3: 1, 4: 2.5, 5: 5, 6: 10 };
+  const SYMBOLS = CFG.symbols;
+  const WILD = Engine.enrichedWild(CFG);
+  const SCATTER = Engine.enrichedScatter(CFG);
+  const POOL = [...SYMBOLS, WILD, SCATTER];
+  const REEL_POOLS = Engine.buildReelPools(CFG);
 
   const MIN_BET = 20;
   const MAX_BET = 400;
   const BET_STEP = 20;
 
   const SCATTER_TRIGGER = CFG.scatterTrigger;
-  const BONUS_WIN_MULT = CFG.bonusWinMult;
 
   const BIG_WIN_MULT = CFG.bigWinMult;
   const MEGA_WIN_MULT = CFG.megaWinMult;
@@ -27,28 +26,6 @@
   // ---------- coin mode (Hold & Win style bonus) ----------
 
   const COIN_MIN_SPINS = CFG.coinMinSpins;
-  const COIN_LAND_CHANCE = CFG.coinLandChancePct / 100;
-  const COIN_RARE_CHANCE = 0.07;
-  const COIN_RARE_MULTS = [2, 3, 5, 10];
-  const COIN_VALUE_TABLE = [
-    { mult: 1, weight: 40 },
-    { mult: 1.5, weight: 24 },
-    { mult: 2, weight: 16 },
-    { mult: 3, weight: 10 },
-    { mult: 5, weight: 6 },
-    { mult: 10, weight: 3 },
-    { mult: 25, weight: 1 },
-  ];
-  const COIN_VALUE_TOTAL_WEIGHT = COIN_VALUE_TABLE.reduce((sum, v) => sum + v.weight, 0);
-
-  function weightedCoinValueMult() {
-    let roll = Math.random() * COIN_VALUE_TOTAL_WEIGHT;
-    for (const v of COIN_VALUE_TABLE) {
-      if (roll < v.weight) return v.mult;
-      roll -= v.weight;
-    }
-    return COIN_VALUE_TABLE[0].mult;
-  }
 
   const state = {
     balance: 1000,
@@ -68,6 +45,10 @@
   // scales a millisecond duration down when fast mode is active
   function ms(v) {
     return state.fastMode ? Math.round(v * 0.35) : v;
+  }
+
+  function sleep(v) {
+    return new Promise((resolve) => setTimeout(resolve, v));
   }
 
   const el = {
@@ -94,21 +75,21 @@
     popupAmount: document.getElementById("popupAmount"),
     popupSub: document.getElementById("popupSub"),
     confettiCanvas: document.getElementById("confettiCanvas"),
+    testBanner: document.getElementById("testBanner"),
   };
 
   // ---------- helpers ----------
 
-  function weightedRandomSymbol() {
-    let roll = Math.random() * TOTAL_WEIGHT;
-    for (const s of POOL) {
-      if (roll < s.weight) return s;
-      roll -= s.weight;
-    }
-    return POOL[0];
+  function randomSymbolForReel(c) {
+    return Engine.drawFromPool(REEL_POOLS[c], Math.random);
   }
 
   function formatNumber(n) {
     return Math.round(n).toLocaleString("de-DE");
+  }
+
+  function formatMult(n) {
+    return n.toLocaleString("de-DE", { minimumFractionDigits: n < 1 ? 3 : 0, maximumFractionDigits: 3 });
   }
 
   function flash(elm, big) {
@@ -184,6 +165,7 @@
     const cell = document.createElement("div");
     cell.className = "cell";
     if (symbol.scatter) cell.classList.add("cell-scatter");
+    if (symbol.wild) cell.classList.add("cell-wild");
     if (symbol.top) cell.classList.add("cell-top");
     const img = document.createElement("img");
     img.src = symbol.img;
@@ -215,28 +197,35 @@
 
   function buildPaytable() {
     el.paytableList.innerHTML = "";
-    [...SYMBOLS].reverse().forEach((s) => {
+
+    function payRow(symbol, labelText) {
       const li = document.createElement("li");
       const img = document.createElement("img");
-      img.src = s.img;
-      img.alt = s.key;
-      const mult = document.createElement("span");
-      mult.className = "pt-mult";
-      mult.textContent = `×${s.mult}`;
+      img.src = symbol.img;
+      img.alt = symbol.key;
       li.appendChild(img);
-      li.appendChild(mult);
+      if (labelText) {
+        const label = document.createElement("span");
+        label.className = "pt-mult";
+        label.textContent = labelText;
+        li.appendChild(label);
+      } else {
+        const pays = document.createElement("div");
+        pays.className = "pt-pays";
+        [3, 4, 5, 6].forEach((k) => {
+          const cell = document.createElement("span");
+          cell.className = "pt-pay-cell";
+          cell.innerHTML = `<b>${k}×</b>${formatMult(symbol.pay[k])}`;
+          pays.appendChild(cell);
+        });
+        li.appendChild(pays);
+      }
       el.paytableList.appendChild(li);
-    });
-    const li = document.createElement("li");
-    const img = document.createElement("img");
-    img.src = SCATTER.img;
-    img.alt = "scatter";
-    const label = document.createElement("span");
-    label.className = "pt-mult";
-    label.textContent = `${SCATTER_TRIGGER}+ = Münzjagd`;
-    li.appendChild(img);
-    li.appendChild(label);
-    el.paytableList.appendChild(li);
+    }
+
+    [...SYMBOLS].reverse().forEach((s) => payRow(s));
+    payRow(WILD, "Ersetzt jedes Zahlsymbol (Walze 2–5)");
+    payRow(SCATTER, `${SCATTER_TRIGGER}+ irgendwo = Münzjagd`);
   }
 
   // ---------- spin animation ----------
@@ -251,8 +240,9 @@
       strip.style.transform = "translateY(0)";
       strip.innerHTML = "";
 
+      const colIndex = [...el.reelWindow.children].indexOf(colEl);
       for (let i = 0; i < STRIP_LEAD; i++) {
-        strip.appendChild(makeCell(weightedRandomSymbol()));
+        strip.appendChild(makeCell(randomSymbolForReel(colIndex)));
       }
       finalSymbols.forEach((sym) => strip.appendChild(makeCell(sym)));
 
@@ -265,8 +255,15 @@
       strip.style.transform = `translateY(-${STRIP_LEAD * cellHeight}px)`;
       strip.style.filter = "blur(0px)";
 
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
+      // F2 fix: transitionend can be swallowed (tab switch, background app,
+      // device rotation, a second spin firing mid-animation) which used to
+      // leave this promise open forever and freeze every control. A timeout
+      // fallback guarantees it always resolves.
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimer);
         strip.removeEventListener("transitionend", onEnd);
         colEl.classList.remove("landing");
         // eslint-disable-next-line no-unused-expressions
@@ -275,7 +272,12 @@
         setTimeout(() => colEl.classList.remove("landing"), ms(450));
         resolve(strip);
       };
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        finish();
+      };
       strip.addEventListener("transitionend", onEnd);
+      const fallbackTimer = setTimeout(finish, duration + 300);
     });
   }
 
@@ -306,104 +308,6 @@
     document.querySelector(".machine").offsetWidth;
     document.querySelector(".machine").classList.add(cls);
     setTimeout(() => document.querySelector(".machine").classList.remove(cls), ms(mega ? 1500 : 550));
-  }
-
-  // ---------- paylines (horizontal, vertical, diagonal, zigzag) ----------
-
-  function buildPaylines() {
-    const lines = [];
-
-    // horizontal — one per row
-    for (let r = 0; r < ROWS; r++) {
-      const cells = [];
-      for (let c = 0; c < COLS; c++) cells.push([c, r]);
-      lines.push(cells);
-    }
-
-    // vertical — one per column
-    for (let c = 0; c < COLS; c++) {
-      const cells = [];
-      for (let r = 0; r < ROWS; r++) cells.push([c, r]);
-      lines.push(cells);
-    }
-
-    // diagonals (down-right and down-left), length = ROWS
-    for (let startCol = 0; startCol <= COLS - ROWS; startCol++) {
-      const down = [];
-      const up = [];
-      for (let r = 0; r < ROWS; r++) {
-        down.push([startCol + r, r]);
-        up.push([startCol + r, ROWS - 1 - r]);
-      }
-      lines.push(down);
-      lines.push(up);
-    }
-
-    // zigzag paylines across all reels (classic V / W patterns)
-    const zigzagPatterns = [
-      [0, 1, 2, 3, 2, 1],
-      [3, 2, 1, 0, 1, 2],
-      [1, 0, 1, 0, 1, 0],
-      [2, 3, 2, 3, 2, 3],
-      [0, 0, 1, 2, 3, 3],
-      [3, 3, 2, 1, 0, 0],
-    ];
-    zigzagPatterns.forEach((pattern) => {
-      lines.push(pattern.map((r, c) => [c, r]));
-    });
-
-    return lines;
-  }
-
-  const PAYLINES = buildPaylines();
-
-  // ---------- win evaluation ----------
-
-  function evaluateGrid(resultGrid) {
-    let totalWin = 0;
-    let winLineCount = 0;
-    const winCellMap = new Map();
-    const lineBet = state.bet / PAYLINES.length;
-
-    PAYLINES.forEach((cells) => {
-      // scan the whole line for runs of 3+ matching symbols, not just from the left edge
-      let i = 0;
-      while (i < cells.length) {
-        const [ci, ri] = cells[i];
-        const sym = resultGrid[ci][ri];
-        if (sym.scatter) {
-          i++;
-          continue;
-        }
-        let j = i + 1;
-        while (j < cells.length) {
-          const [cj, rj] = cells[j];
-          const symJ = resultGrid[cj][rj];
-          if (symJ.scatter || symJ.key !== sym.key) break;
-          j++;
-        }
-        const run = j - i;
-        if (run >= 3) {
-          const win = lineBet * sym.mult * RUN_MULT[run];
-          totalWin += win;
-          winLineCount++;
-          for (let k = i; k < j; k++) {
-            const [ck, rk] = cells[k];
-            winCellMap.set(`${ck},${rk}`, [ck, rk]);
-          }
-        }
-        i = j;
-      }
-    });
-
-    let scatterCount = 0;
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) {
-        if (resultGrid[c][r].scatter) scatterCount++;
-      }
-    }
-
-    return { totalWin, winLineCount, winningCells: [...winCellMap.values()], scatterCount };
   }
 
   // ---------- coin mode grid ----------
@@ -492,28 +396,39 @@
       strip.style.transform = "translateY(0)";
       strip.style.filter = "blur(0px)";
 
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
+      // F2 fix: same timeout fallback as spinColumn — never leave a coin
+      // cell (and thus the whole bonus round) stuck on a swallowed event.
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimer);
         strip.removeEventListener("transitionend", onEnd);
         cellEl.innerHTML = "";
         if (finalCoin) applyCoinFace(cellEl, finalCoin);
         resolve();
       };
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        finish();
+      };
       strip.addEventListener("transitionend", onEnd);
+      const fallbackTimer = setTimeout(finish, duration + 300);
     });
   }
 
   function playCoinReveal(newlyLanded) {
     const cols = [...el.reelWindow.children];
-    const landedSet = new Set(newlyLanded.map(([c, r]) => `${c},${r}`));
+    const landedMap = new Map(newlyLanded.map(([c, r, coin]) => [`${c},${r}`, coin]));
     const jobs = [];
 
     for (let c = 0; c < COLS; c++) {
       for (let r = 0; r < ROWS; r++) {
         const key = `${c},${r}`;
-        if (state.coinGrid[c][r] && !landedSet.has(key)) continue; // already-locked coin, leave it
+        const wasLocked = state.coinGrid[c][r] && !landedMap.has(key);
+        if (wasLocked) continue; // already-locked coin, leave it
         const cell = cols[c].children[r];
-        const finalCoin = landedSet.has(key) ? state.coinGrid[c][r] : null;
+        const finalCoin = landedMap.get(key) || null;
         const duration = ms(520 + (c + r) * 20 + Math.random() * 100);
         jobs.push(
           spinCoinCell(cell, finalCoin, duration).then(() => {
@@ -529,26 +444,12 @@
     return Promise.all(jobs);
   }
 
-  async function coinModeSpin() {
-    state.spinning = true;
-    setControlsEnabled(false);
+  // Runs one coin-hunt respin. Returns true once the round has finished
+  // (grid full or spins exhausted) and the payout has been settled.
+  async function coinModeSpinStep() {
     setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
 
-    const newlyLanded = [];
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) {
-        if (state.coinGrid[c][r]) continue;
-        if (Math.random() < COIN_LAND_CHANCE) {
-          const mult = weightedCoinValueMult();
-          const rare = Math.random() < COIN_RARE_CHANCE
-            ? COIN_RARE_MULTS[Math.floor(Math.random() * COIN_RARE_MULTS.length)]
-            : null;
-          const value = state.bet * mult * (rare || 1) * BONUS_WIN_MULT;
-          state.coinGrid[c][r] = { mult, rare, value };
-          newlyLanded.push([c, r]);
-        }
-      }
-    }
+    const newlyLanded = Engine.coinStep(CFG, state.coinGrid, state.bet, Math.random);
 
     await playCoinReveal(newlyLanded);
     state.coinFilled += newlyLanded.length;
@@ -565,12 +466,11 @@
 
     if (gridFull || state.coinSpinsLeft <= 0) {
       await finishCoinMode(gridFull);
-      return;
+      return true;
     }
 
     setMessage(`Münzjagd läuft… Spins übrig: ${state.coinSpinsLeft}`, "bonus");
-    state.spinning = false;
-    setTimeout(spin, ms(850));
+    return false;
   }
 
   async function finishCoinMode(gridFull) {
@@ -589,13 +489,11 @@
     popAndCount(el.lastWin, 0, total, big);
     state.lastWin = total;
 
-    state.spinning = false;
-
     if (gridFull) {
       shakeMachine(true);
       await showPopup("GITTER VOLL!", total, "Alle Felder gefüllt — Jackpot!", 260, true);
     } else {
-      await showPopup("MÜNZJAGD BEENDET", total, "Gesamtgewinn der Münzjagd", 180, total >= state.bet * BIG_WIN_MULT);
+      await showPopup("MÜNZJAGD BEENDET", total, "Gesamtgewinn der Münzjagd", 180, big);
     }
 
     state.inBonus = false;
@@ -605,7 +503,15 @@
     el.machineWrap.classList.remove("bonus-active");
     buildInitialGrid();
     setMessage("Zurück im Hauptspiel. Viel Glück!", null);
-    setControlsEnabled(true);
+  }
+
+  // runs the coin-hunt bonus to completion, one paced respin at a time
+  async function runBonusRound() {
+    while (true) {
+      await sleep(ms(850));
+      const finished = await coinModeSpinStep();
+      if (finished) return;
+    }
   }
 
   // ---------- confetti ----------
@@ -613,21 +519,31 @@
   const ctx = el.confettiCanvas.getContext("2d");
   let confettiParticles = [];
   let confettiRAF = null;
+  let canvasW = 0;
+  let canvasH = 0;
   const CONFETTI_COLORS = ["#dcaa4e", "#4ade80", "#5eb1ff", "#ff6b81", "#f2f1ee"];
 
+  // F4 fix: canvas backing store must scale with devicePixelRatio, or the
+  // whole confetti layer renders soft/blurry on any high-density screen
+  // (i.e. basically every phone).
   function resizeCanvas() {
-    el.confettiCanvas.width = window.innerWidth;
-    el.confettiCanvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvasW = window.innerWidth;
+    canvasH = window.innerHeight;
+    el.confettiCanvas.width = Math.round(canvasW * dpr);
+    el.confettiCanvas.height = Math.round(canvasH * dpr);
+    el.confettiCanvas.style.width = `${canvasW}px`;
+    el.confettiCanvas.style.height = `${canvasH}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
 
   function burstConfetti(amount) {
-    const w = el.confettiCanvas.width;
     for (let i = 0; i < amount; i++) {
       confettiParticles.push({
         shape: "rect",
-        x: Math.random() * w,
+        x: Math.random() * canvasW,
         y: -20 - Math.random() * 200,
         vx: (Math.random() - 0.5) * 6,
         vy: 2 + Math.random() * 4,
@@ -642,11 +558,10 @@
   }
 
   function burstCoins(amount) {
-    const w = el.confettiCanvas.width;
     for (let i = 0; i < amount; i++) {
       confettiParticles.push({
         shape: "coin",
-        x: Math.random() * w,
+        x: Math.random() * canvasW,
         y: -30 - Math.random() * 400,
         vx: (Math.random() - 0.5) * 3,
         vy: 3 + Math.random() * 5,
@@ -660,8 +575,7 @@
   }
 
   function confettiLoop() {
-    ctx.clearRect(0, 0, el.confettiCanvas.width, el.confettiCanvas.height);
-    const h = el.confettiCanvas.height;
+    ctx.clearRect(0, 0, canvasW, canvasH);
     confettiParticles.forEach((p) => {
       p.vy += 0.05;
       p.x += p.vx;
@@ -690,7 +604,7 @@
       }
       ctx.restore();
     });
-    confettiParticles = confettiParticles.filter((p) => p.y < h + 40);
+    confettiParticles = confettiParticles.filter((p) => p.y < canvasH + 40);
     if (confettiParticles.length > 0) {
       confettiRAF = requestAnimationFrame(confettiLoop);
     } else {
@@ -722,13 +636,19 @@
     requestAnimationFrame(tick);
 
     return new Promise((resolve) => {
+      // F5 fix: the auto-dismiss timer used to keep running even after a
+      // manual click already closed the popup, calling dismiss() twice.
+      // Harmless today, but the second call fires the moment sound/extra
+      // animation hooks it (Welle 2), so clear it properly on close.
+      let dismissTimer;
       const dismiss = () => {
+        clearTimeout(dismissTimer);
         el.popup.classList.remove("show");
         el.popup.removeEventListener("click", dismiss);
         resolve();
       };
       el.popup.addEventListener("click", dismiss);
-      setTimeout(dismiss, ms(2600));
+      dismissTimer = setTimeout(dismiss, ms(2600));
     });
   }
 
@@ -754,41 +674,21 @@
     setTimeout(() => el.lever.classList.remove("pulled"), duration);
   }
 
-  async function spin() {
-    if (state.spinning) return;
-
-    if (state.inCoinMode) {
-      await coinModeSpin();
-      return;
-    }
-
-    if (!state.inBonus && state.balance < state.bet) {
-      setMessage("Nicht genug Guthaben. Einsatz verringern.", null);
-      stopAutoSpin();
-      return;
-    }
-
-    state.spinning = true;
-    setControlsEnabled(false);
-    el.reelWindow.querySelectorAll(".cell-win").forEach((c) => c.classList.remove("cell-win"));
-
+  // Runs exactly one base-game spin (deduct bet, animate, evaluate, react).
+  // Returns true if it triggered the coin-hunt bonus.
+  async function doBaseSpin() {
     const prev = state.balance;
     state.balance -= state.bet;
     el.balance.textContent = formatNumber(state.balance);
     flash(el.balance);
     setMessage("Viel Glück!", null);
 
-    const resultGrid = [];
-    for (let c = 0; c < COLS; c++) {
-      const colSymbols = [];
-      for (let r = 0; r < ROWS; r++) colSymbols.push(weightedRandomSymbol());
-      resultGrid.push(colSymbols);
-    }
+    const resultGrid = Engine.spinGrid(CFG, Math.random);
 
     await playSpinAnimation(resultGrid);
     state.grid = resultGrid;
 
-    const { totalWin, winLineCount, winningCells, scatterCount } = evaluateGrid(resultGrid);
+    const { totalWin, wins, winningCells, scatterCount } = Engine.evaluateWays(CFG, resultGrid, state.bet);
     const appliedWin = totalWin;
 
     if (appliedWin > 0) {
@@ -814,9 +714,9 @@
       shakeMachine(false);
       await showPopup("GROSSER GEWINN!", appliedWin, "", 130);
     } else if (appliedWin > 0) {
-      if (winLineCount > 1) {
-        setMessage(`${winLineCount}x KOMBI-GEWINN! +${formatNumber(appliedWin)} Coins`, "win");
-        if (winLineCount >= 3) shakeMachine(false);
+      if (wins.length > 1) {
+        setMessage(`${wins.length}x KOMBI-GEWINN! +${formatNumber(appliedWin)} Coins`, "win");
+        if (wins.length >= 3) shakeMachine(false);
       } else {
         setMessage(`Gewinn: +${formatNumber(appliedWin)} Coins`, "win");
       }
@@ -836,21 +736,53 @@
       renderCoinGrid();
       await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
       setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
-      state.spinning = false;
-      setTimeout(spin, ms(850));
-      return;
+    }
+
+    return triggered;
+  }
+
+  // One full user-initiated spin: the base spin, plus the entire coin-hunt
+  // bonus round if it triggers. This is the unit auto-spin repeats — F1 fix:
+  // auto-spin used to die silently whenever a bonus fired, because the old
+  // spin() returned early out of the very block that scheduled the next
+  // auto-spin. Now that continuation lives outside the spin logic entirely.
+  async function runSpinCycle() {
+    state.spinning = true;
+    setControlsEnabled(false);
+    el.reelWindow.querySelectorAll(".cell-win").forEach((c) => c.classList.remove("cell-win"));
+
+    const triggered = await doBaseSpin();
+    if (triggered) {
+      await runBonusRound();
     }
 
     state.spinning = false;
     setControlsEnabled(true);
+  }
 
-    if (state.autoSpinsLeft > 0) {
-      state.autoSpinsLeft -= 1;
-      if (state.autoSpinsLeft > 0 && state.balance >= state.bet) {
-        setTimeout(spin, ms(500));
-      } else {
+  async function spin() {
+    if (state.spinning) return;
+    if (!state.inBonus && state.balance < state.bet) {
+      setMessage("Nicht genug Guthaben. Einsatz verringern.", null);
+      stopAutoSpin();
+      return;
+    }
+    await runSpinCycle();
+  }
+
+  async function autoSpinLoop() {
+    while (state.autoSpinsLeft > 0) {
+      if (state.balance < state.bet) {
         stopAutoSpin();
+        return;
       }
+      await runSpinCycle();
+      state.autoSpinsLeft -= 1;
+      if (state.autoSpinsLeft <= 0) {
+        stopAutoSpin();
+        return;
+      }
+      await sleep(ms(500));
     }
   }
 
@@ -868,7 +800,16 @@
     state.autoSpinsLeft = 10;
     el.autoBtn.classList.add("active");
     el.autoBtn.textContent = "Stop";
-    if (!state.spinning) spin();
+    if (!state.spinning) autoSpinLoop();
+  }
+
+  // ---------- test-mode banner (F7) ----------
+  // settings.html is open to anyone; make it obvious when the running
+  // config is not the shipped default so nobody mistakes a detuned build
+  // for the real balance.
+  function updateTestBanner() {
+    if (!el.testBanner) return;
+    el.testBanner.hidden = !window.LuckySpinConfig.isCustomized();
   }
 
   // ---------- wiring ----------
@@ -911,6 +852,7 @@
 
   buildInitialGrid();
   buildPaytable();
+  updateTestBanner();
   el.balance.textContent = formatNumber(state.balance);
   el.bet.textContent = state.bet;
   el.lastWin.textContent = "0";

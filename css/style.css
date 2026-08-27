@@ -426,6 +426,15 @@ body {
   50% { filter: drop-shadow(0 0 14px rgba(220, 170, 78, 0.95)); transform: scale(1.05); }
 }
 
+.cell.cell-wild img {
+  animation: wild-glow 1.3s ease-in-out infinite;
+}
+
+@keyframes wild-glow {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(255, 224, 130, 0.55)); transform: scale(1) rotate(0deg); }
+  50% { filter: drop-shadow(0 0 16px rgba(255, 224, 130, 0.95)); transform: scale(1.08) rotate(-3deg); }
+}
+
 .cell.cell-win::after {
   content: "";
   position: absolute;
@@ -757,12 +766,51 @@ body {
 .paytable li img {
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
 }
 
 .paytable li .pt-mult {
   margin-left: auto;
   color: var(--win);
   font-weight: 700;
+  text-align: right;
+}
+
+.pt-pays {
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 2px 8px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-pay-cell {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.pt-pay-cell b {
+  color: var(--win);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+/* ---------- Test-mode banner (F7) ---------- */
+
+.test-banner {
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #16130a;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f2c66b,
+    #f2c66b 10px,
+    #e0ac3e 10px,
+    #e0ac3e 20px
+  );
 }
 
 .paytable-note {
@@ -1008,6 +1056,25 @@ body {
   color: var(--text);
   padding: 4px 6px;
   font-size: 0.82rem;
+}
+
+.pay-fields {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pay-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pay-field .mult-input {
+  width: 68px;
+}
+
+.symbol-note {
+  font-style: italic;
 }
 
 .prob-pill {
