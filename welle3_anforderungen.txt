@@ -1,0 +1,125 @@
+================================================================================
+LUCKYSPIN — WELLE 3: OPTIK & DESIGN
+Anforderungen für die nächste Umsetzungsrunde
+================================================================================
+
+Kontext: Welle 1 (Mathe/Fundament) und Welle 2 (Sound, Anticipation,
+Slam-Stop, Gewinn-Inszenierung) sind fertig, getestet und als PR #1 auf
+GitHub (Ruben0241/onlinecasino, Branch claude/analyze-improvements-tasks-k4dlli
+-> claude/slot-machine-startpage-9iiogd). Welle 3 betrifft primär CSS/Layout
+und ist gut parallelisierbar (mehrere Agents möglich), da die fünf Punkte
+größtenteils unterschiedliche Dateibereiche berühren.
+
+Betroffene Dateien: index.html, css/style.css, js/script.js (nur punktuell),
+js/config.js (nur für E1 falls Guthaben/Einsatz persistiert werden sollen).
+
+Aufwand laut Werkstattbericht: ca. 2 Tage / hoch.
+
+--------------------------------------------------------------------------------
+D1 — BONUS-SCREEN BRAUCHT EIN EIGENES LAYOUT                        [Sofort]
+--------------------------------------------------------------------------------
+Aktueller Zustand: Das Münzgitter (renderCoinGrid() in js/script.js) läuft im
+selben .reel-frame/.reel-window wie die normalen Walzen, der Hebel bleibt
+daneben stehen und frisst Breite. Der .machine-aura Sonnenstrahl-Hintergrund
+läuft mit voller Deckkraft hinter den Münzen durch.
+
+Anforderungen:
+  - Im Bonus-Modus (state.inBonus / Klasse .bonus-active auf .machine-wrap)
+    den Hebel ausblenden oder unter die Maschine schieben, damit das
+    Münzgitter die volle Rahmenbreite nutzt.
+  - .machine-aura im Bonus auf ~25% Deckkraft reduzieren, zusätzlich eine
+    dunkle Vignette hinter dem Gitter einziehen.
+  - Über dem Gitter eine LAUFENDE GESAMTSUMME einblenden (aktuell sieht man
+    den Gesamtgewinn der Münzjagd erst am Ende in finishCoinMode()) — das
+    ist der spannendste Wert der Runde und aktuell unsichtbar.
+  - Leere Felder als klar erkennbare Leerstellen zeichnen (aktuell nur
+    dunkler Hintergrund, siehe .coin-cell in style.css), damit "noch 4 bis
+    voll" auf einen Blick sichtbar ist.
+  - Einen Fortschrittsbalken "X / 24 Felder" plus die verbleibenden Respins
+    (state.coinSpinsLeft) prominent anzeigen — aktuell nur eine kleine Zahl
+    in #freeSpinsValue.
+
+--------------------------------------------------------------------------------
+D2 — DER SCATTER MUSS UNVERWECHSELBAR SEIN                          [Sofort]
+--------------------------------------------------------------------------------
+Aktueller Zustand: Scatter-Symbol (img/symbols/scatter.svg) und Top-Symbol
+KZU (img/symbols/kzu.svg) sehen beide golden/dunkel aus und sind auf dem
+Spielfeld schwer zu unterscheiden. .cell-scatter img bekommt nur einen
+goldenen drop-shadow (--scatter: #dcaa4e, identisch zu --gold).
+
+Anforderungen:
+  - Eigene Formsprache für den Scatter: andere Farbe (Vorschlag laut Bericht:
+    violett/türkis statt Gold — passt zur bereits vorhandenen lila
+    Farbfamilie in kzu.svg-Umfeld nicht, also bewusst absetzen).
+  - Anderer Rahmen/Border als bei .cell-top.
+  - Permanente leichte Animation (nicht nur bei Gewinn/Landung).
+  - Ein Zähler am Bildschirmrand ("2 / 3 Scatter"), sobald der erste Scatter
+    in einem laufenden Spin liegt — aktuell gibt es keine Live-Anzeige
+    während des Spins, nur scatterCount aus Engine.evaluateWays() nach
+    Abschluss der Walzenanimation.
+
+--------------------------------------------------------------------------------
+D3 — GEHÄUSE, GLAS, TIEFE                                          [Als Nächstes]
+--------------------------------------------------------------------------------
+Aktueller Zustand: .reel-frame ist ein flaches dunkles Rechteck (#0b0d10)
+auf dunklem Grund (.machine: var(--panel)), keine Tiefenwirkung.
+
+Anforderungen (vier CSS-Ebenen):
+  1. Rahmen aus Metall mit Verlauf und Kantenlicht um .reel-frame.
+  2. Glasscheibe davor: schräger heller Streifen mit ~8% Deckkraft über dem
+     gesamten Walzenfenster (Pseudo-Element mit linear-gradient, ähnlich dem
+     bestehenden .popup::before Rays-Muster als Vorbild für die Technik).
+  3. Innenschatten oben und unten an .reel-window, sodass Symbole hinter der
+     Kante zu verschwinden scheinen.
+  4. Feine Trennstege zwischen den .reel-col Spalten (aktuell nur 5px gap).
+
+--------------------------------------------------------------------------------
+D5 — MOBILE-LAYOUT: DIE MASCHINE FÜLLT DEN BILDSCHIRM NICHT          [Sofort]
+--------------------------------------------------------------------------------
+Aktueller Zustand: .stage hat padding 32px 16px 48px, .machine-wrap
+max-width: 660px, .stage align-items: flex-start — auf schmalen Handys bleibt
+oben/unten Platz frei, sechs Walzenspalten sind auf schmalem Bildschirm sehr
+schmal (@media max-width: 520px reduziert nur .cell img und Schriftgrößen,
+nicht das Grid selbst).
+
+Anforderungen (zwei Optionen, eine auswählen oder kombinieren):
+  a) Maschine auf volle Höhe strecken mittels dvh-Einheiten (nicht vh, damit
+     die mobile Browserleiste nicht reinpfuscht).
+  b) Auf schmalen Geräten (@media max-width: ~480px) auf ein 5x3-Gitter
+     umschalten und die Mathe für dieses Format separat simulieren/tunen
+     (sim/simulate.js unterstützt bereits variable cfg.cols/cfg.rows über
+     js/config.js — für ein zweites Format müsste eine eigene Konfiguration
+     oder ein Umschalt-Mechanismus ergänzt werden, das ist der aufwändigere
+     Weg).
+  - Den Hebel (#leverBtn) auf dem Handy unter die Walzen verschieben oder
+    ganz ausblenden (aktuell nur .lever { width: 28px } bei max-width: 760px).
+
+--------------------------------------------------------------------------------
+E1 — FORTSCHRITT SPEICHERN                                          [Sofort]
+--------------------------------------------------------------------------------
+Aktueller Zustand: state.balance, state.bet, state.fastMode existieren nur
+im Arbeitsspeicher von js/script.js (IIFE-Closure). Nach jedem Neuladen ist
+alles weg. Der Mute-Status aus js/audio.js wird bereits in localStorage
+gespeichert (Schlüssel luckyspin_muted) — das dient als Vorlage für die
+übrigen Werte.
+
+Anforderungen:
+  - Guthaben (state.balance), Einsatz (state.bet) und Fast-Modus
+    (state.fastMode) in localStorage persistieren (eigener Schlüssel,
+    z. B. luckyspin_session_v1, getrennt von luckyspin_config_v2 aus
+    js/config.js, da das eine Spieleinstellungen und das andere
+    Spielstand ist).
+  - Beim Laden vorhandenen Spielstand wiederherstellen, sonst Default
+    (1000 Guthaben, 40 Einsatz) verwenden.
+  - "Guthaben auffüllen"-Button mit Cooldown, wenn state.balance < state.bet
+    fällt (aktuell nur die Meldung "Nicht genug Guthaben. Einsatz
+    verringern." in spin()) — Cooldown-Zeitstempel ebenfalls in
+    localStorage ablegen, damit ein Reload ihn nicht umgeht.
+
+================================================================================
+NICHT TEIL VON WELLE 3 (zur Abgrenzung)
+================================================================================
+Welle 4 (B6 Jackpots, E3 Freispiele, E4 Gamble, E2 Statistik, D7 Infoseite)
+ist eine separate, spätere Runde und hier bewusst ausgeklammert.
+
+================================================================================
