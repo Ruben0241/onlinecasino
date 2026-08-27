@@ -137,6 +137,7 @@
     const cell = document.createElement("div");
     cell.className = "cell";
     if (symbol.scatter) cell.classList.add("cell-scatter");
+    if (symbol.top) cell.classList.add("cell-top");
     const img = document.createElement("img");
     img.src = symbol.img;
     img.alt = symbol.key;
@@ -318,23 +319,33 @@
     const lineBet = state.bet / PAYLINES.length;
 
     PAYLINES.forEach((cells) => {
-      const [c0, r0] = cells[0];
-      const first = resultGrid[c0][r0];
-      if (first.scatter) return;
-      let run = 1;
-      while (run < cells.length) {
-        const [c, r] = cells[run];
-        if (resultGrid[c][r].key !== first.key) break;
-        run++;
-      }
-      if (run >= 3) {
-        const win = lineBet * first.mult * RUN_MULT[run];
-        totalWin += win;
-        winLineCount++;
-        for (let i = 0; i < run; i++) {
-          const [c, r] = cells[i];
-          winCellMap.set(`${c},${r}`, [c, r]);
+      // scan the whole line for runs of 3+ matching symbols, not just from the left edge
+      let i = 0;
+      while (i < cells.length) {
+        const [ci, ri] = cells[i];
+        const sym = resultGrid[ci][ri];
+        if (sym.scatter) {
+          i++;
+          continue;
         }
+        let j = i + 1;
+        while (j < cells.length) {
+          const [cj, rj] = cells[j];
+          const symJ = resultGrid[cj][rj];
+          if (symJ.scatter || symJ.key !== sym.key) break;
+          j++;
+        }
+        const run = j - i;
+        if (run >= 3) {
+          const win = lineBet * sym.mult * RUN_MULT[run];
+          totalWin += win;
+          winLineCount++;
+          for (let k = i; k < j; k++) {
+            const [ck, rk] = cells[k];
+            winCellMap.set(`${ck},${rk}`, [ck, rk]);
+          }
+        }
+        i = j;
       }
     });
 

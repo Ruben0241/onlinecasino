@@ -294,6 +294,15 @@ body {
   filter: drop-shadow(0 0 6px var(--scatter));
 }
 
+.cell.cell-top img {
+  animation: kzu-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes kzu-glow {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(220, 170, 78, 0.6)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 14px rgba(220, 170, 78, 0.95)); transform: scale(1.05); }
+}
+
 .cell.cell-win::after {
   content: "";
   position: absolute;

@@ -12,6 +12,7 @@
       { key: "bell", img: "img/symbols/bell.svg", weight: 9, mult: 12 },
       { key: "gem", img: "img/symbols/gem.svg", weight: 6, mult: 20 },
       { key: "seven", img: "img/symbols/seven.svg", weight: 3, mult: 40 },
+      { key: "kzu", img: "img/symbols/kzu.svg", weight: 1, mult: 75, top: true },
     ],
     scatter: { key: "scatter", img: "img/symbols/scatter.svg", weight: 2 },
     scatterTrigger: 3,
