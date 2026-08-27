@@ -93,6 +93,18 @@ body {
   color: var(--gold);
 }
 
+.mute-btn {
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.mute-btn.muted {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
 .pill-label {
   font-size: 0.7rem;
   color: var(--text-dim);
