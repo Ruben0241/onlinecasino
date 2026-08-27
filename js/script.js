@@ -195,6 +195,11 @@
       const onEnd = (e) => {
         if (e.propertyName !== "transform") return;
         strip.removeEventListener("transitionend", onEnd);
+        colEl.classList.remove("landing");
+        // eslint-disable-next-line no-unused-expressions
+        colEl.offsetWidth;
+        colEl.classList.add("landing");
+        setTimeout(() => colEl.classList.remove("landing"), 450);
         resolve(strip);
       };
       strip.addEventListener("transitionend", onEnd);
@@ -202,19 +207,32 @@
   }
 
   async function playSpinAnimation(resultGrid) {
+    el.reelFrame.classList.add("spinning");
     const cols = [...el.reelWindow.children];
     const durations = [900, 1150, 1400, 1650, 1900, 2150];
     const promises = cols.map((colEl, c) => spinColumn(colEl, resultGrid[c], durations[c]));
-    return Promise.all(promises);
+    await Promise.all(promises);
+    el.reelFrame.classList.remove("spinning");
   }
 
   function markWinCells(winningCells) {
     const cols = [...el.reelWindow.children];
-    winningCells.forEach(([c, r]) => {
+    winningCells.forEach(([c, r], i) => {
       const strip = cols[c].querySelector(".reel-strip");
       const visible = [...strip.children].slice(-ROWS);
-      visible[r].classList.add("cell-win");
+      const cell = visible[r];
+      cell.style.animationDelay = `${(i % 6) * 0.08}s`;
+      cell.classList.add("cell-win");
     });
+  }
+
+  function shakeMachine(mega) {
+    const cls = mega ? "shake-mega" : "shake";
+    document.querySelector(".machine").classList.remove("shake", "shake-mega");
+    // eslint-disable-next-line no-unused-expressions
+    document.querySelector(".machine").offsetWidth;
+    document.querySelector(".machine").classList.add(cls);
+    setTimeout(() => document.querySelector(".machine").classList.remove(cls), mega ? 1500 : 550);
   }
 
   // ---------- win evaluation ----------
@@ -264,6 +282,7 @@
     const w = el.confettiCanvas.width;
     for (let i = 0; i < amount; i++) {
       confettiParticles.push({
+        shape: "rect",
         x: Math.random() * w,
         y: -20 - Math.random() * 200,
         vx: (Math.random() - 0.5) * 6,
@@ -272,6 +291,24 @@
         color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
         rotation: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 0.3,
+        life: 0,
+      });
+    }
+    if (!confettiRAF) confettiLoop();
+  }
+
+  function burstCoins(amount) {
+    const w = el.confettiCanvas.width;
+    for (let i = 0; i < amount; i++) {
+      confettiParticles.push({
+        shape: "coin",
+        x: Math.random() * w,
+        y: -30 - Math.random() * 400,
+        vx: (Math.random() - 0.5) * 3,
+        vy: 3 + Math.random() * 5,
+        size: 10 + Math.random() * 8,
+        rotation: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.5,
         life: 0,
       });
     }
@@ -290,8 +327,23 @@
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rotation);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      if (p.shape === "coin") {
+        const squash = Math.max(0.15, Math.abs(Math.cos(p.rotation)));
+        const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, p.size);
+        grad.addColorStop(0, "#fff3cf");
+        grad.addColorStop(0.5, "#dcaa4e");
+        grad.addColorStop(1, "#8a6420");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size * squash, p.size, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fff3cf";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      }
       ctx.restore();
     });
     confettiParticles = confettiParticles.filter((p) => p.y < h + 40);
@@ -304,12 +356,17 @@
 
   // ---------- popup ----------
 
-  function showPopup(title, amount, sub, confettiAmount) {
+  function showPopup(title, amount, sub, confettiAmount, mega) {
     el.popupTitle.textContent = title;
     el.popupSub.textContent = sub || "";
     el.popupAmount.textContent = "0";
+    el.popup.classList.toggle("mega", !!mega);
     el.popup.classList.add("show");
     burstConfetti(confettiAmount);
+    if (mega) {
+      burstCoins(70);
+      shakeMachine(true);
+    }
 
     const duration = 900;
     const start = performance.now();
@@ -392,9 +449,10 @@
 
     if (appliedWin >= state.bet * MEGA_WIN_MULT) {
       setMessage("MEGA GEWINN!", "win");
-      await showPopup("MEGA GEWINN!", appliedWin, "Unglaublich!", 220);
+      await showPopup("MEGA GEWINN!", appliedWin, "Unglaublich!", 220, true);
     } else if (appliedWin >= state.bet * BIG_WIN_MULT) {
       setMessage("Großer Gewinn!", "win");
+      shakeMachine(false);
       await showPopup("GROSSER GEWINN!", appliedWin, "", 130);
     } else if (appliedWin > 0) {
       setMessage(`Gewinn: +${formatNumber(appliedWin)} Coins`, "win");
