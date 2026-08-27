@@ -3,6 +3,18 @@
 
   const Engine = window.LuckySpinEngine;
   const CFG = window.LuckySpinConfig.loadConfig();
+  const Audio = window.LuckySpinAudio || null;
+
+  // Every Audio.* call below is guarded so a missing/broken audio module
+  // never breaks the game — spins and wins work identically without sound.
+  function safeAudio(fn) {
+    if (!Audio) return;
+    try {
+      fn(Audio);
+    } catch (e) {
+      /* audio must never break gameplay */
+    }
+  }
 
   const COLS = CFG.cols;
   const ROWS = CFG.rows;
@@ -76,6 +88,7 @@
     popupSub: document.getElementById("popupSub"),
     confettiCanvas: document.getElementById("confettiCanvas"),
     testBanner: document.getElementById("testBanner"),
+    muteBtn: document.getElementById("muteBtn"),
   };
 
   // ---------- helpers ----------
@@ -121,6 +134,7 @@
         const p = Math.max(0, Math.min(1, (now - start) / duration));
         const eased = 1 - Math.pow(1 - p, 3);
         elm.textContent = formatNumber(from + (to - from) * eased);
+        safeAudio((A) => A.playCountTick(p));
         if (p < 1) {
           requestAnimationFrame(tick);
         } else {
@@ -270,6 +284,7 @@
         colEl.offsetWidth;
         colEl.classList.add("landing");
         setTimeout(() => colEl.classList.remove("landing"), ms(450));
+        safeAudio((A) => A.playReelStop(colIndex));
         resolve(strip);
       };
       const onEnd = (e) => {
@@ -285,8 +300,10 @@
     el.reelFrame.classList.add("spinning");
     const cols = [...el.reelWindow.children];
     const durations = [900, 1150, 1400, 1650, 1900, 2150].map(ms);
+    safeAudio((A) => A.startSpinLoop(durations[durations.length - 1]));
     const promises = cols.map((colEl, c) => spinColumn(colEl, resultGrid[c], durations[c]));
     await Promise.all(promises);
+    safeAudio((A) => A.stopSpinLoop());
     el.reelFrame.classList.remove("spinning");
   }
 
@@ -435,6 +452,7 @@
             if (finalCoin) {
               cell.classList.add("just-landed");
               setTimeout(() => cell.classList.remove("just-landed"), ms(700));
+              safeAudio((A) => A.playCoinLand());
             }
           })
         );
@@ -474,6 +492,7 @@
   }
 
   async function finishCoinMode(gridFull) {
+    safeAudio((A) => A.stopBonusLoop());
     let total = 0;
     for (let c = 0; c < COLS; c++) {
       for (let r = 0; r < ROWS; r++) {
@@ -664,6 +683,10 @@
   }
 
   function pullLever() {
+    safeAudio((A) => {
+      A.init();
+      A.playLeverClick();
+    });
     el.lever.classList.remove("pulled");
     el.leverRod.style.animationDuration = "";
     // eslint-disable-next-line no-unused-expressions
@@ -693,6 +716,7 @@
 
     if (appliedWin > 0) {
       markWinCells(winningCells);
+      safeAudio((A) => A.playWinArpeggio(Math.max(0, wins.length - 1)));
       const big = appliedWin >= state.bet * BIG_WIN_MULT;
       const balanceBefore = state.balance;
       state.balance += appliedWin;
@@ -734,7 +758,9 @@
       el.freeSpinsValue.textContent = state.coinSpinsLeft;
       el.machineWrap.classList.add("bonus-active");
       renderCoinGrid();
+      safeAudio((A) => A.playBonusFanfare());
       await showPopup("MÜNZJAGD!", COIN_MIN_SPINS, "Sammle Münzen — jede neue Münze verlängert die Runde!", 180, true);
+      safeAudio((A) => A.startBonusLoop());
       setMessage(`Münzjagd gestartet! Spins übrig: ${state.coinSpinsLeft}`, "bonus");
     }
 
@@ -826,14 +852,39 @@
     el.bet.textContent = state.bet;
   });
 
-  el.spinBtn.addEventListener("click", spin);
-  el.autoBtn.addEventListener("click", toggleAutoSpin);
+  el.spinBtn.addEventListener("click", () => {
+    safeAudio((A) => A.init());
+    spin();
+  });
+  el.autoBtn.addEventListener("click", () => {
+    safeAudio((A) => A.init());
+    toggleAutoSpin();
+  });
 
   el.lever.addEventListener("click", () => {
     if (el.lever.disabled) return;
     pullLever();
     spin();
   });
+
+  function updateMuteBtn() {
+    if (!el.muteBtn) return;
+    const muted = !!(Audio && Audio.isMuted());
+    el.muteBtn.textContent = muted ? "🔇" : "🔊";
+    el.muteBtn.classList.toggle("muted", muted);
+    el.muteBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+  }
+
+  if (el.muteBtn) {
+    el.muteBtn.addEventListener("click", () => {
+      safeAudio((A) => {
+        A.init();
+        A.setMuted(!A.isMuted());
+      });
+      updateMuteBtn();
+    });
+  }
+  updateMuteBtn();
 
   el.fastBtn.addEventListener("click", () => {
     state.fastMode = !state.fastMode;
@@ -844,6 +895,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !state.spinning && !state.inBonus) {
       e.preventDefault();
+      safeAudio((A) => A.init());
       spin();
     }
   });
