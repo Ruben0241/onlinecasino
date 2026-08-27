@@ -108,15 +108,49 @@
     return Math.round(n).toLocaleString("de-DE");
   }
 
-  function flash(elm) {
-    elm.classList.remove("flash");
+  function flash(elm, big) {
+    elm.classList.remove("flash", "flash-big");
     elm.style.animationDuration = "";
     // eslint-disable-next-line no-unused-expressions
     elm.offsetWidth;
-    const duration = ms(500);
+    const duration = ms(big ? 750 : 500);
+    elm.style.setProperty("--pop-scale", big ? "2" : "1.5");
     elm.style.animationDuration = `${duration}ms`;
     elm.classList.add("flash");
-    setTimeout(() => elm.classList.remove("flash"), duration);
+    if (big) elm.classList.add("flash-big");
+    setTimeout(() => elm.classList.remove("flash", "flash-big"), duration);
+  }
+
+  // animates an element's number counting from `from` up to `to`
+  const countAnimGen = new WeakMap();
+  function animateCount(elm, from, to, duration) {
+    const gen = (countAnimGen.get(elm) || 0) + 1;
+    countAnimGen.set(elm, gen);
+    if (duration <= 0 || from === to) {
+      elm.textContent = formatNumber(to);
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const start = performance.now();
+      function tick(now) {
+        if (countAnimGen.get(elm) !== gen) return; // superseded by a newer count
+        const p = Math.max(0, Math.min(1, (now - start) / duration));
+        const eased = 1 - Math.pow(1 - p, 3);
+        elm.textContent = formatNumber(from + (to - from) * eased);
+        if (p < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          resolve();
+        }
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  // pops the element and animates its number counting up to `to`; bigger/slower for big wins
+  function popAndCount(elm, from, to, big) {
+    flash(elm, big);
+    animateCount(elm, from, to, ms(big ? 900 : 280));
   }
 
   function setMessage(text, kind) {
@@ -495,12 +529,12 @@
       }
     }
 
+    const big = total >= state.bet * BIG_WIN_MULT;
+    const balanceBefore = state.balance;
     state.balance += total;
-    el.balance.textContent = formatNumber(state.balance);
-    flash(el.balance);
+    popAndCount(el.balance, balanceBefore, state.balance, big);
+    popAndCount(el.lastWin, 0, total, big);
     state.lastWin = total;
-    el.lastWin.textContent = formatNumber(total);
-    flash(el.lastWin);
 
     state.spinning = false;
 
@@ -692,14 +726,16 @@
 
     if (appliedWin > 0) {
       markWinCells(winningCells);
+      const big = appliedWin >= state.bet * BIG_WIN_MULT;
+      const balanceBefore = state.balance;
       state.balance += appliedWin;
-      el.balance.textContent = formatNumber(state.balance);
-      flash(el.balance);
+      popAndCount(el.balance, balanceBefore, state.balance, big);
+      popAndCount(el.lastWin, 0, appliedWin, big);
+    } else {
+      animateCount(el.lastWin, 0, 0, 0);
     }
 
     state.lastWin = appliedWin;
-    el.lastWin.textContent = formatNumber(appliedWin);
-    if (appliedWin > 0) flash(el.lastWin);
 
     const triggered = scatterCount >= SCATTER_TRIGGER;
 
