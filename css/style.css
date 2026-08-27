@@ -169,10 +169,10 @@ body {
   all: unset;
   position: absolute;
   top: 50%;
-  right: -58px;
+  right: -66px;
   transform: translateY(-50%);
-  width: 44px;
-  height: 82%;
+  width: 56px;
+  height: 60%;
   z-index: 2;
   cursor: pointer;
   touch-action: manipulation;
@@ -183,82 +183,46 @@ body {
   opacity: 0.5;
 }
 
-.lever-mount {
+.lever-track,
+.lever-handle {
   position: absolute;
   inset: 0;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #4a4e57, #202226 55%, #131417);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09), inset 2px 0 4px rgba(255, 255, 255, 0.06), 0 4px 12px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
 }
 
-.lever-mount::before,
-.lever-mount::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  width: 26px;
-  height: 10px;
-  margin-left: -13px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #6b6f78, #2a2c30);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+.lever-handle {
+  transform: translateY(0);
 }
 
-.lever-mount::before { top: -5px; }
-.lever-mount::after { bottom: -5px; }
-
-.lever-rod {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  width: 7px;
-  height: 66%;
-  margin-left: -3.5px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #6b6f78, #f2f1ee 45%, #8b8f98);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
-  transform-origin: bottom center;
-  transform: rotate(-16deg);
-}
-
-.lever-knob {
-  position: absolute;
-  top: -17px;
-  left: 50%;
-  width: 30px;
-  height: 30px;
-  margin-left: -15px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 28%, #ff9c9c, #d61f3c 55%, #7a0f21 100%);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5), inset 0 -3px 5px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.45);
-}
-
-.lever:hover:not(:disabled) .lever-rod {
-  transform: rotate(-8deg);
+.lever:hover:not(:disabled) .lever-handle {
+  transform: translateY(10%);
   transition: transform 0.2s ease;
 }
 
-.lever.pulled .lever-rod {
+.lever.pulled .lever-handle {
   animation-name: lever-pull;
   animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
   animation-fill-mode: forwards;
 }
 
 @keyframes lever-pull {
-  0% { transform: rotate(-16deg); }
-  38% { transform: rotate(64deg); }
-  55% { transform: rotate(64deg); }
-  74% { transform: rotate(-24deg); }
-  88% { transform: rotate(-9deg); }
-  100% { transform: rotate(-16deg); }
+  0% { transform: translateY(0); }
+  38% { transform: translateY(45%); }
+  55% { transform: translateY(45%); }
+  74% { transform: translateY(-4%); }
+  88% { transform: translateY(2%); }
+  100% { transform: translateY(0); }
 }
 
 @media (max-width: 760px) {
   .lever {
     right: 2px;
-    width: 30px;
-    height: 70%;
-    transform: translateY(-50%) scale(0.72);
+    width: 40px;
+    height: 52%;
+    transform: translateY(-50%) scale(0.85);
     transform-origin: right center;
   }
 }
