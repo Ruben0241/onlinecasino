@@ -23,6 +23,30 @@
   const BIG_WIN_MULT = CFG.bigWinMult;
   const MEGA_WIN_MULT = CFG.megaWinMult;
 
+  // German display names for the win-sequence labels (report C4). Falls
+  // back to a title-cased key for anything not listed.
+  const SYMBOL_LABELS = {
+    ten: "10",
+    jack: "Bube",
+    queen: "Dame",
+    king: "König",
+    ace: "Ass",
+    cherry: "Kirsche",
+    lemon: "Zitrone",
+    grapes: "Trauben",
+    bell: "Glocke",
+    gem: "Edelstein",
+    seven: "Sieben",
+    kzu: "Krone",
+    wild: "Wild",
+    scatter: "Scatter",
+  };
+  function symbolLabel(key) {
+    return SYMBOL_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
   // ---------- coin mode (Hold & Win style bonus) ----------
 
   const COIN_MIN_SPINS = CFG.coinMinSpins;
@@ -299,6 +323,143 @@
       cell.style.animationDelay = `${(i % 6) * 0.08}s`;
       cell.classList.add("cell-win");
     });
+  }
+
+  // Looks up the rendered cell element for a landed grid position. Mirrors
+  // the slicing markWinCells uses: after a spin lands, each reel-strip holds
+  // STRIP_LEAD scroll-through cells followed by the ROWS final cells, so the
+  // last ROWS children are the visible, landed symbols in row order.
+  function getCellEl(c, r) {
+    const colEl = el.reelWindow.children[c];
+    if (!colEl) return null;
+    const strip = colEl.querySelector(".reel-strip");
+    const visible = [...strip.children].slice(-ROWS);
+    return visible[r] || null;
+  }
+
+  // Groups one win's cells by reel (column), each entry holding every cell
+  // element that matched on that reel — used both to highlight every
+  // matching cell and to plot one path point per reel.
+  function groupWinCellsByColumn(win) {
+    const byCol = new Map();
+    win.cells.forEach(([c, r]) => {
+      const cellEl = getCellEl(c, r);
+      if (!cellEl) return;
+      if (!byCol.has(c)) byCol.set(c, []);
+      byCol.get(c).push(cellEl);
+    });
+    return [...byCol.keys()]
+      .sort((a, b) => a - b)
+      .map((c) => byCol.get(c));
+  }
+
+  // Draws a connected line through the (centroid of each) reel's matching
+  // cells, so a win reads as one path running left-to-right instead of a
+  // scatter of unrelated glowing cells.
+  function drawWinPath(svg, cellGroups) {
+    svg.innerHTML = "";
+    const frameRect = el.reelWindow.getBoundingClientRect();
+    svg.setAttribute("viewBox", `0 0 ${frameRect.width} ${frameRect.height}`);
+
+    const centers = cellGroups.map((cells) => {
+      let sx = 0;
+      let sy = 0;
+      cells.forEach((cellEl) => {
+        const r = cellEl.getBoundingClientRect();
+        sx += r.left + r.width / 2 - frameRect.left;
+        sy += r.top + r.height / 2 - frameRect.top;
+      });
+      return [sx / cells.length, sy / cells.length];
+    });
+
+    if (centers.length >= 2) {
+      const poly = document.createElementNS(SVG_NS, "polyline");
+      poly.setAttribute("points", centers.map(([x, y]) => `${x},${y}`).join(" "));
+      poly.setAttribute("class", "win-path-line");
+      svg.appendChild(poly);
+    }
+
+    centers.forEach(([x, y]) => {
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("cx", x);
+      dot.setAttribute("cy", y);
+      dot.setAttribute("r", 7);
+      dot.setAttribute("class", "win-path-dot");
+      svg.appendChild(dot);
+    });
+  }
+
+  // Shows one win's turn in the sequence: highlights every matching cell,
+  // draws its connecting path, pops up its "4x Glocke — 320" label, holds
+  // for `duration`, then clears back to the dimmed state for the next win.
+  async function playSingleWin(win, svg, label, duration) {
+    const cellGroups = groupWinCellsByColumn(win);
+    const allCells = cellGroups.flat();
+
+    allCells.forEach((cellEl, i) => {
+      cellEl.style.animationDelay = `${(i % 6) * 0.05}s`;
+      cellEl.classList.add("cell-win");
+    });
+
+    drawWinPath(svg, cellGroups);
+    label.textContent = `${win.count}× ${symbolLabel(win.symbolKey)} — ${formatNumber(win.amount)}`;
+
+    // force reflow so re-adding "show" retriggers the transition even if
+    // the previous win's turn just removed it
+    // eslint-disable-next-line no-unused-expressions
+    svg.offsetWidth;
+    svg.classList.add("show");
+    label.classList.add("show");
+
+    await sleep(duration);
+
+    svg.classList.remove("show");
+    label.classList.remove("show");
+    allCells.forEach((cellEl) => cellEl.classList.remove("cell-win"));
+
+    await sleep(ms(120));
+  }
+
+  // Full win-presentation sequence (report C4): dims every symbol not part
+  // of any win, then plays each win in `wins` one at a time as a connected,
+  // labeled path so it's visible *why* it won, instead of every winning
+  // cell lighting up simultaneously. Resolves once the sequence is done and
+  // the board is back to normal, ready for the balance/lastWin count-up.
+  async function playWinSequence(wins) {
+    if (!wins || wins.length === 0) return;
+
+    const winCellKeys = new Set();
+    wins.forEach((w) => w.cells.forEach(([c, r]) => winCellKeys.add(`${c},${r}`)));
+
+    const dimmedCells = [];
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        if (winCellKeys.has(`${c},${r}`)) continue;
+        const cellEl = getCellEl(c, r);
+        if (!cellEl) continue;
+        cellEl.classList.add("cell-dim");
+        dimmedCells.push(cellEl);
+      }
+    }
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "win-path-svg");
+    el.reelWindow.appendChild(svg);
+
+    const label = document.createElement("div");
+    label.className = "win-label";
+    el.reelFrame.appendChild(label);
+
+    // biggest win last, so the sequence builds toward the best moment
+    const orderedWins = [...wins].sort((a, b) => a.amount - b.amount);
+    const stepDuration = ms(600);
+    for (const win of orderedWins) {
+      await playSingleWin(win, svg, label, stepDuration);
+    }
+
+    dimmedCells.forEach((cellEl) => cellEl.classList.remove("cell-dim"));
+    svg.remove();
+    label.remove();
   }
 
   function shakeMachine(mega) {
@@ -688,11 +849,11 @@
     await playSpinAnimation(resultGrid);
     state.grid = resultGrid;
 
-    const { totalWin, wins, winningCells, scatterCount } = Engine.evaluateWays(CFG, resultGrid, state.bet);
+    const { totalWin, wins, scatterCount } = Engine.evaluateWays(CFG, resultGrid, state.bet);
     const appliedWin = totalWin;
 
     if (appliedWin > 0) {
-      markWinCells(winningCells);
+      await playWinSequence(wins);
       const big = appliedWin >= state.bet * BIG_WIN_MULT;
       const balanceBefore = state.balance;
       state.balance += appliedWin;
@@ -749,7 +910,9 @@
   async function runSpinCycle() {
     state.spinning = true;
     setControlsEnabled(false);
-    el.reelWindow.querySelectorAll(".cell-win").forEach((c) => c.classList.remove("cell-win"));
+    el.reelWindow.querySelectorAll(".cell-win, .cell-dim").forEach((c) => c.classList.remove("cell-win", "cell-dim"));
+    el.reelWindow.querySelectorAll(".win-path-svg").forEach((s) => s.remove());
+    el.reelFrame.querySelectorAll(".win-label").forEach((l) => l.remove());
 
     const triggered = await doBaseSpin();
     if (triggered) {
