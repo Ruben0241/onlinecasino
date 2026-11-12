@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agac.py – ASCII Christmas Tree</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #stage {
+    position: absolute; left: 50%; top: 50%;
+    width: 1080px; height: 1920px; transform-origin: center center; transform: translate(-50%, -50%);
+    overflow: hidden;
+    font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    background: linear-gradient(#070c19 0px, #060a12 1000px, #06070e 1300px, #0a090c 1300px);
+  }
+  #ascii { position: absolute; left: 0; top: 0; width: 1080px; height: 1160px; }
+  .hud { position: absolute; font-size: 21px; line-height: 32px; color: #888992; white-space: pre; }
+  #tlabel { right: 25px; top: 16px; color: #e86f82; }
+  #info { left: 25px; top: 1143px; text-shadow: 0 0 6px #06070e; }
+  #bar { left: 15px; right: 15px; top: 1257px; color: #9e9fa6; display: flex; justify-content: space-between; }
+  #sep { position: absolute; left: 0; right: 0; top: 1300px; height: 1px; background: #212025; }
+  #code { position: absolute; left: 0; right: 0; top: 1301px; bottom: 0; overflow: hidden; background: #0a090c; }
+  #lines { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+  .ln { height: 44px; line-height: 44px; font-size: 25px; white-space: pre; position: relative; }
+  .ln.cur { background: #230e0e; }
+  .no { position: absolute; left: 0; width: 70px; text-align: right; color: #514e54; }
+  .cur .no { color: #b1a3a7; }
+  .tx { position: absolute; left: 100px; color: #ecebee; }
+  .cursor { display: inline-block; width: 14px; height: 30px; vertical-align: -6px; background: #f2464e; }
+  .kw { color: #ef7a8c; } .kc { color: #ff89a2; } .num { color: #e8b183; }
+  .fn { color: #7fa7ee; } .str { color: #a9d39e; } .cm { color: #6b6a6d; } .op { color: #d9d8dd; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="ascii" width="1080" height="1160"></canvas>
+  <div class="hud" id="tlabel">t 00.00s</div>
+  <div class="hud" id="info"><span id="handle">@agac.py · 2026</span>
+rotation <span id="rot">000.00°</span>     lights  <span id="lights">  0</span>
+letters <span id="letters">0</span></div>
+  <div class="hud" id="bar"><span>py agac.py</span><span id="status">running · 30 fps</span></div>
+  <div id="sep"></div>
+  <div id="code"><div id="lines"></div></div>
+</div>
+<script src="source.js"></script>
+<script src="agac.js"></script>
+</body>
+</html>
