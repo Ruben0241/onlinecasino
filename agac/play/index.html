@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>GRUFT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05070d; --ink: #d9d8dd; --dim: #888992; --accent: #e86f82; --hot: #f2464e; --ok: #7fd49a; --gold: #e8b183;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden;
+    font-family: var(--mono); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 28px; align-items: baseline;
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(transparent, rgba(5, 7, 13, .85) 40%); font-size: 15px; color: var(--dim); pointer-events: none;
+    font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  #hud b { color: var(--ink); font-weight: 700; }
+  #hud .hp b { color: var(--ok); } #hud .hp.low b { color: var(--hot); }
+  #hud .lvl { margin-left: auto; color: var(--accent); }
+  #msg { position: fixed; left: 0; right: 0; top: calc(18% + env(safe-area-inset-top, 0px)); text-align: center; font-size: 18px;
+    color: var(--gold); pointer-events: none; text-shadow: 0 0 12px rgba(232, 177, 131, .5); transition: opacity .3s; }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 7, 13, .72);
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+  #overlay[hidden] { display: none; }
+  .card { max-width: 34rem; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .card pre { margin: 0; color: var(--hot); font-size: clamp(7px, 1.9vw, 13px); line-height: 1.1; text-shadow: 0 0 14px rgba(242, 70, 78, .45); }
+  .card h2 { margin: 0; font-size: 20px; color: var(--accent); letter-spacing: .08em; text-wrap: balance; }
+  .card p { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.6; }
+  .card kbd { color: var(--ink); font-family: var(--mono); }
+  button.go { font: 700 16px var(--mono); color: #0a090c; background: var(--accent); border: 0; padding: 12px 28px; border-radius: 4px;
+    cursor: pointer; letter-spacing: .06em; }
+  button.go:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  #touch { position: fixed; inset: 0; pointer-events: none; }
+  #touch[hidden] { display: none; }
+  #stick, #knob { position: fixed; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #stick { width: 120px; height: 120px; margin: -60px 0 0 -60px; border: 2px solid rgba(217, 216, 221, .25); }
+  #knob { width: 50px; height: 50px; margin: -25px 0 0 -25px; background: rgba(217, 216, 221, .25); }
+  #fire { position: fixed; right: calc(28px + env(safe-area-inset-right, 0px)); bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    width: 92px; height: 92px; border-radius: 50%; border: 2px solid rgba(242, 70, 78, .7); background: rgba(242, 70, 78, .18);
+    color: var(--hot); font: 700 14px var(--mono); pointer-events: auto; display: flex; align-items: center; justify-content: center; }
+  #fire.on { background: rgba(242, 70, 78, .45); }
+  .hint { position: fixed; left: 0; right: 0; bottom: calc(46px + env(safe-area-inset-bottom, 0px)); text-align: center; font-size: 12px; color: var(--dim); opacity: .7; }
+  @media (prefers-reduced-motion: reduce) { #msg { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="msg"></div>
+<div id="hud">
+  <span class="hp">HP <b id="hp">100</b></span>
+  <span>AMMO <b id="ammo">40</b></span>
+  <span>KILLS <b id="kills">0/0</b></span>
+  <span class="lvl" id="lvl">E1</span>
+</div>
+<div id="touch" hidden>
+  <div id="stick"></div><div id="knob"></div>
+  <div id="fire">FIRE</div>
+  <div class="hint">links ziehen: laufen · rechts ziehen: umsehen</div>
+</div>
+<div id="overlay">
+  <div class="card" id="card">
+<pre>
+ ██████  ██████  ██    ██ ███████ ████████
+██       ██   ██ ██    ██ ██         ██
+██   ███ ██████  ██    ██ █████      ██
+██    ██ ██   ██ ██    ██ ██         ██
+ ██████  ██   ██  ██████  ██         ██
+</pre>
+    <h2 id="otitle">Drei Ebenen. Ein Ausgang.</h2>
+    <p id="otext">Finde das grüne Feld <b style="color:var(--ok)">EXIT</b> in jeder Ebene.<br>
+      <kbd>WASD</kbd> laufen · <kbd>Maus</kbd>/<kbd>←→</kbd> drehen · <kbd>Klick</kbd>/<kbd>Leertaste</kbd> schiessen<br>
+      iPad: links ziehen laufen, rechts ziehen umsehen, FIRE drücken</p>
+    <button class="go" id="go" type="button">START</button>
+  </div>
+</div>
+<script src="gruft.js"></script>
+</body>
+</html>
